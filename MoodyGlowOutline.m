@@ -10,23 +10,45 @@
 + (UIWindow *)findBestWindow {
     UIApplication *app = [UIApplication sharedApplication];
     
-    // Priority 1: Lock screen window
+    // Priority 1: Lock screen window (searched across all connected scenes)
     Class lockScreenWindowClass = NSClassFromString(@"SBLockScreenWindow");
     if (lockScreenWindowClass) {
-        for (UIWindow *window in app.windows) {
-            if ([window isKindOfClass:lockScreenWindowClass]) {
-                return window;
+        for (UIScene *scene in app.connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *window in windowScene.windows) {
+                    if ([window isKindOfClass:lockScreenWindowClass]) {
+                        return window;
+                    }
+                }
             }
         }
     }
     
-    // Priority 2: Key window
-    if (app.keyWindow) {
-        return app.keyWindow;
+    // Priority 2: Key window (searched across all connected scenes)
+    for (UIScene *scene in app.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+            for (UIWindow *window in windowScene.windows) {
+                if (window.isKeyWindow) {
+                    return window;
+                }
+            }
+        }
     }
     
-    // Priority 3: Any window
-    return app.windows.firstObject;
+    // Priority 3: First available window from any scene
+    for (UIScene *scene in app.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            UIWindowScene *windowScene = (UIWindowScene *)scene;
+            if (windowScene.windows.count > 0) {
+                return windowScene.windows.firstObject;
+            }
+        }
+    }
+    
+    // Fallback: No window found
+    return nil;
 }
 
 // Build the outline path for iPhone XS Max (notch device)
