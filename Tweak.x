@@ -1,38 +1,47 @@
-// Moody Glow - Notification Capture
+// Moody Glow - Notification Capture + Outline Animation
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Step 2: Capture incoming notifications on the lock screen
+// Step 3: Capture notifications and trigger the Outline animation
 
 #import <Foundation/Foundation.h>
 #import "PrivateHeaders.h"
+#import "MoodyGlowOutline.h"
 
 // --- iOS 14+ Notification Capture Group ---
 %group iOS14Plus
 
 %hook SBLockScreenNotificationListController
 
-// This method is called every time a new notification arrives on the lock screen
 - (void)observer:(id)observer addBulletin:(id)bulletin forFeed:(NSUInteger)feed playLightsAndSirens:(BOOL)lights withReply:(id)reply {
 
-    // Capture the notification data
     NSLog(@"[Moody Glow] ===== NEW NOTIFICATION DETECTED =====");
-    NSLog(@"[Moody Glow] Bulletin Class: %@", [bulletin class]);
-    NSLog(@"[Moody Glow] Bulletin Object: %@", bulletin);
 
-    // Try to extract the notification request if available
+    // Extract notification data for logging
     if ([bulletin respondsToSelector:@selector(notificationRequest)]) {
         NCNotificationRequest *request = [bulletin performSelector:@selector(notificationRequest)];
         if (request) {
             NSLog(@"[Moody Glow] App Bundle ID: %@", request.sectionIdentifier);
-            NSLog(@"[Moody Glow] Notification Title: %@", [request title]);
-            NSLog(@"[Moody Glow] Notification Subtitle: %@", [request subtitle]);
-            NSLog(@"[Moody Glow] Notification Message: %@", [request message]);
+            NSLog(@"[Moody Glow] Title: %@", [request title]);
+            NSLog(@"[Moody Glow] Message: %@", [request message]);
         }
+    }
+
+    // --- Trigger the Outline Animation ---
+    UIWindow *targetWindow = [MoodyGlowOutline findBestWindow];
+    if (targetWindow) {
+        // Default yellow color for now (will be replaced with app icon color later)
+        UIColor *outlineColor = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
+        [MoodyGlowOutline showOutlineWithColor:outlineColor
+                                        inView:targetWindow
+                                   repeatCount:2
+                                         speed:1.0];
+        NSLog(@"[Moody Glow] Outline animation triggered on window: %@", targetWindow);
+    } else {
+        NSLog(@"[Moody Glow] ERROR: Could not find a window for outline animation");
     }
 
     NSLog(@"[Moody Glow] =================================");
 
-    // Call the original method to preserve system behavior
     %orig;
 }
 
@@ -42,6 +51,6 @@
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] Tweak loaded successfully. Initializing iOS14Plus group...");
+    NSLog(@"[Moody Glow] Tweak loaded. Initializing iOS14Plus group...");
     %init(iOS14Plus);
 }
