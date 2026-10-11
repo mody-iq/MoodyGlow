@@ -7,6 +7,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = MoodyGlow
 MoodyGlow_FILES = Tweak.x
 MoodyGlow_CFLAGS = -fobjc-arc
+MoodyGlow_PRIVATE_FRAMEWORKS = SpringBoardUI
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
