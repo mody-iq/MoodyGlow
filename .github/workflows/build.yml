@@ -13,18 +13,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Theos
-        uses: kujto/theos-action@main
+        uses: Randomblock1/theos-action@v1
         with:
-          theos-path: ${{ github.workspace }}/theos
+          theos-dir: 'theos'
 
       - name: Build Tweak
         run: |
           export THEOS=${{ github.workspace }}/theos
           make clean
-          make package
+          make package FINALPACKAGE=1
 
       - name: Upload Deb
         uses: actions/upload-artifact@v4
         with:
           name: MoodyGlow-Deb
-          path: .theos/_/*.deb
+          path: packages/*.deb
