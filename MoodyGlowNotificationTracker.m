@@ -1,29 +1,154 @@
-// Moody Glow - Notification Tracker Header
+// Moody Glow - Notification Tracker Implementation
 // Developer: Moody
-// Purpose: Track which notifications are currently on the lock screen
+// Logs to /var/mobile/Documents/MoodyGlow.log AND notifies a change handler
 
-#import <Foundation/Foundation.h>
+#import "MoodyGlowNotificationTracker.h"
 
-@interface MoodyGlowNotificationTracker : NSObject
+@interface MoodyGlowNotificationTracker ()
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *map;
+@property (nonatomic, strong) NSString *logFilePath;
+@property (nonatomic, copy) void (^changeHandler)(NSInteger, NSArray<NSString *> *);
+@end
 
-+ (instancetype)sharedInstance;
+@implementation MoodyGlowNotificationTracker
 
-// Add or update a tracked notification
-- (void)addNotificationWithID:(NSString *)identifier bundleID:(NSString *)bundleID;
++ (instancetype)sharedInstance {
+    static MoodyGlowNotificationTracker *shared = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        shared = [[MoodyGlowNotificationTracker alloc] init];
+    });
+    return shared;
+}
 
-// Remove a tracked notification
-- (void)removeNotificationWithID:(NSString *)identifier;
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _map = [NSMutableDictionary dictionary];
+        _logFilePath = @"/var/mobile/Documents/MoodyGlow.log";
+        
+        NSString *dir = [_logFilePath stringByDeletingLastPathComponent];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:nil];
+        
+        [self writeLog:[NSString stringWithFormat:@"=== Tracker initialized (pid=%d) ===", getpid()]];
+    }
+    return self;
+}
 
-// Clear all tracked notifications
-- (void)removeAll;
+#pragma mark - File Logging
 
-// Number of currently tracked notifications
-- (NSInteger)activeCount;
+- (void)writeLog:(NSString *)line {
+    if (!line) return;
+    
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"HH:mm:ss";
+    NSString *timestamp = [fmt stringFromDate:[NSDate date]];
+    
+    NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", timestamp, line];
+    
+    NSLog(@"[Moody Glow Tracker] %@", line);
+    
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:self.logFilePath];
+    if (!fh) {
+        [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
+                                                contents:[entry dataUsingEncoding:NSUTF8StringEncoding]
+                                              attributes:nil];
+    } else {
+        [fh seekToEndOfFile];
+        [fh writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    }
+    
+    NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:self.logFilePath error:nil];
+    unsigned long long size = [attrs fileSize];
+    if (size > 100 * 1024) {
+        [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
+                                                contents:[@"(Log rotated)\n" dataUsingEncoding:NSUTF8StringEncoding]
+                                              attributes:nil];
+    }
+}
 
-// List of unique bundle IDs (one per app that has notifications)
-- (NSArray<NSString *> *)uniqueBundleIDs;
+#pragma mark - Change Notification
 
-// Called (on main thread) whenever the tracked set changes
-- (void)setChangeHandler:(void (^)(NSInteger count, NSArray<NSString *> *bundleIDs))handler;
+- (void)notifyChange {
+    if (!self.changeHandler) return;
+    NSInteger count = self.map.count;
+    NSArray<NSString *> *apps = [self uniqueBundleIDs];
+    self.changeHandler(count, apps);
+}
+
+#pragma mark - Public API
+
+- (void)addNotificationWithID:(NSString *)identifier bundleID:(NSString *)bundleID {
+    if (!identifier || identifier.length == 0) return;
+    if (!bundleID || bundleID.length == 0) bundleID = @"unknown";
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL wasExisting = (self.map[identifier] != nil);
+        NSString *oldBundle = self.map[identifier];
+        self.map[identifier] = bundleID;
+        
+        // Log only if genuinely new
+        if (!wasExisting) {
+            NSArray *apps = [self uniqueBundleIDs];
+            [self writeLog:[NSString stringWithFormat:@"ADD %@ | bundle=%@ | total=%lu | uniqueApps=%lu",
+                            identifier, bundleID,
+                            (unsigned long)self.map.count,
+                            (unsigned long)apps.count]];
+        }
+        
+        // Notify only if state actually changed
+        BOOL bundleChanged = (oldBundle && ![oldBundle isEqualToString:bundleID]);
+        if (!wasExisting || bundleChanged) {
+            [self notifyChange];
+        }
+    });
+}
+
+- (void)removeNotificationWithID:(NSString *)identifier {
+    if (!identifier || identifier.length == 0) return;
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL existed = (self.map[identifier] != nil);
+        if (!existed) return;
+        
+        [self.map removeObjectForKey:identifier];
+        NSArray *apps = [self uniqueBundleIDs];
+        [self writeLog:[NSString stringWithFormat:@"REMOVE %@ | total=%lu | uniqueApps=%lu",
+                        identifier,
+                        (unsigned long)self.map.count,
+                        (unsigned long)apps.count]];
+        
+        [self notifyChange];
+    });
+}
+
+- (void)removeAll {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL hadAny = (self.map.count > 0);
+        [self.map removeAllObjects];
+        [self writeLog:@"REMOVE ALL | total=0 | uniqueApps=0"];
+        
+        if (hadAny) {
+            [self notifyChange];
+        }
+    });
+}
+
+- (NSInteger)activeCount {
+    return self.map.count;
+}
+
+- (NSArray<NSString *> *)uniqueBundleIDs {
+    NSSet *set = [NSSet setWithArray:[self.map allValues]];
+    return [set allObjects];
+}
+
+- (void)setChangeHandler:(void (^)(NSInteger, NSArray<NSString *> *))handler {
+    self.changeHandler = handler;
+}
 
 @end
