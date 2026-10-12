@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import "PrivateHeaders.h"
 #import "MoodyGlowNotificationTracker.h"
 
 static NSString * const kDiagLogPath = @"/var/mobile/Documents/MoodyGlowDiag.log";
