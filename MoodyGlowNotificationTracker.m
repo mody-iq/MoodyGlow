@@ -1,10 +1,12 @@
 // Moody Glow - Notification Tracker Implementation
 // Developer: Moody
+// Logs are written to /var/mobile/Library/Logs/MoodyGlow.log
 
 #import "MoodyGlowNotificationTracker.h"
 
 @interface MoodyGlowNotificationTracker ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *map;
+@property (nonatomic, strong) NSString *logFilePath;
 @end
 
 @implementation MoodyGlowNotificationTracker
@@ -22,9 +24,56 @@
     self = [super init];
     if (self) {
         _map = [NSMutableDictionary dictionary];
+        _logFilePath = @"/var/mobile/Library/Logs/MoodyGlow.log";
+        
+        // Ensure log directory exists
+        NSString *dir = [_logFilePath stringByDeletingLastPathComponent];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:nil];
     }
     return self;
 }
+
+#pragma mark - File Logging
+
+- (void)writeLog:(NSString *)line {
+    if (!line) return;
+    
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"HH:mm:ss";
+    NSString *timestamp = [fmt stringFromDate:[NSDate date]];
+    
+    NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", timestamp, line];
+    
+    // Also log to console (NSLog) for compatibility
+    NSLog(@"[Moody Glow Tracker] %@", line);
+    
+    // Append to file
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:self.logFilePath];
+    if (!fh) {
+        [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
+                                                contents:[entry dataUsingEncoding:NSUTF8StringEncoding]
+                                              attributes:nil];
+    } else {
+        [fh seekToEndOfFile];
+        [fh writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    }
+    
+    // Truncate if file exceeds 100 KB
+    NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:self.logFilePath error:nil];
+    unsigned long long size = [attrs fileSize];
+    if (size > 100 * 1024) {
+        // Reset the file
+        [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
+                                                contents:[@"(Log rotated)\n" dataUsingEncoding:NSUTF8StringEncoding]
+                                              attributes:nil];
+    }
+}
+
+#pragma mark - Public API
 
 - (void)addNotificationWithID:(NSString *)identifier bundleID:(NSString *)bundleID {
     if (!identifier || identifier.length == 0) return;
@@ -32,11 +81,11 @@
     
     dispatch_async(dispatch_get_main_queue(), ^{
         self.map[identifier] = bundleID;
-        NSLog(@"[Moody Glow Tracker] ADD %@ (bundle=%@) | total=%lu | uniqueApps=%lu",
-              identifier,
-              bundleID,
-              (unsigned long)self.map.count,
-              (unsigned long)[self uniqueBundleIDs].count);
+        NSArray *apps = [self uniqueBundleIDs];
+        [self writeLog:[NSString stringWithFormat:@"ADD %@ | bundle=%@ | total=%lu | uniqueApps=%lu",
+                        identifier, bundleID,
+                        (unsigned long)self.map.count,
+                        (unsigned long)apps.count]];
     });
 }
 
@@ -46,18 +95,19 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         BOOL existed = (self.map[identifier] != nil);
         [self.map removeObjectForKey:identifier];
-        NSLog(@"[Moody Glow Tracker] REMOVE %@ (existed=%d) | total=%lu | uniqueApps=%lu",
-              identifier,
-              existed,
-              (unsigned long)self.map.count,
-              (unsigned long)[self uniqueBundleIDs].count);
+        NSArray *apps = [self uniqueBundleIDs];
+        [self writeLog:[NSString stringWithFormat:@"REMOVE %@ | existed=%d | total=%lu | uniqueApps=%lu",
+                        identifier,
+                        existed,
+                        (unsigned long)self.map.count,
+                        (unsigned long)apps.count]];
     });
 }
 
 - (void)removeAll {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.map removeAllObjects];
-        NSLog(@"[Moody Glow Tracker] REMOVE ALL | total=0");
+        [self writeLog:@"REMOVE ALL | total=0 | uniqueApps=0"];
     });
 }
 
