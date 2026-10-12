@@ -1,6 +1,6 @@
 // Moody Glow - Notification Tracker Implementation
 // Developer: Moody
-// Logs are written to /var/mobile/Library/Logs/MoodyGlow.log
+// Logs are written to /var/mobile/Documents/MoodyGlow.log
 
 #import "MoodyGlowNotificationTracker.h"
 
@@ -24,14 +24,15 @@
     self = [super init];
     if (self) {
         _map = [NSMutableDictionary dictionary];
-        _logFilePath = @"/var/mobile/Library/Logs/MoodyGlow.log";
+        _logFilePath = @"/var/mobile/Documents/MoodyGlow.log";
         
-        // Ensure log directory exists
         NSString *dir = [_logFilePath stringByDeletingLastPathComponent];
         [[NSFileManager defaultManager] createDirectoryAtPath:dir
                                   withIntermediateDirectories:YES
                                                    attributes:nil
                                                         error:nil];
+        
+        [self writeLog:[NSString stringWithFormat:@"=== Tracker initialized (pid=%d) ===", getpid()]];
     }
     return self;
 }
@@ -47,10 +48,8 @@
     
     NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", timestamp, line];
     
-    // Also log to console (NSLog) for compatibility
     NSLog(@"[Moody Glow Tracker] %@", line);
     
-    // Append to file
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:self.logFilePath];
     if (!fh) {
         [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
@@ -62,11 +61,9 @@
         [fh closeFile];
     }
     
-    // Truncate if file exceeds 100 KB
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:self.logFilePath error:nil];
     unsigned long long size = [attrs fileSize];
     if (size > 100 * 1024) {
-        // Reset the file
         [[NSFileManager defaultManager] createFileAtPath:self.logFilePath
                                                 contents:[@"(Log rotated)\n" dataUsingEncoding:NSUTF8StringEncoding]
                                               attributes:nil];
