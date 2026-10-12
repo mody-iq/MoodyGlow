@@ -70,7 +70,10 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
     [super viewWillAppear:animated];
     [self applyLocalization];
     [self applyRTLIfNeeded];
-    [self.tableView reloadData];
+    
+    UITableView *t = [self findTableView];
+    if (t) [t reloadData];
+    
     [self installHeaderView];
 }
 
@@ -111,7 +114,6 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
     MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
     NSString *subtitle = [loc isArabic] ? @"الإصدار 1.0.0 · Moody" : @"v1.0.0 · by Moody";
     
-    // Always recreate to ensure correct language
     MoodyGlowHeaderView *header = [MoodyGlowHeaderView headerViewWithTitle:@"Moody Glow" subtitle:subtitle];
     header.frame = CGRectMake(0, 0, tableView.bounds.size.width, 215);
     tableView.tableHeaderView = header;
@@ -180,14 +182,12 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
     
     NSLog(@"[Moody Glow] Language changed to mode %ld", (long)mode);
     
-    // Re-apply localization and refresh UI immediately
     [self applyLocalization];
     [self applyRTLIfNeeded];
-    [self.tableView reloadData];
     
-    // Reinstall header to update subtitle
     UITableView *t = [self findTableView];
-    if (t) t.tableHeaderView = nil;
+    if (t) [t reloadData];
+    
     [self installHeaderView];
 }
 
@@ -218,9 +218,8 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
         
         [weakSelf applyLocalization];
         [weakSelf applyRTLIfNeeded];
-        [weakSelf.tableView reloadData];
         UITableView *t = [weakSelf findTableView];
-        if (t) t.tableHeaderView = nil;
+        if (t) [t reloadData];
         [weakSelf installHeaderView];
     }]];
     
