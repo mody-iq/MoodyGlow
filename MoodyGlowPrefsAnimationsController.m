@@ -7,6 +7,9 @@
 #import "MoodyGlowPrefsAnimationsController.h"
 #import "MoodyGlowLocalization.h"
 
+static NSString * const kMoodyOriginalLabelKey = @"moodyOriginalLabel";
+static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
+
 @interface MoodyGlowPrefsAnimationsController () <UIColorPickerViewControllerDelegate>
 @end
 
@@ -17,30 +20,48 @@
 - (NSArray *)specifiers {
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Animations" target:self];
-        _specifiers = [self applyLocalization:_specifiers];
+        [self cacheOriginalLabels];
     }
+    [self applyLocalization];
     return _specifiers;
 }
 
-- (NSMutableArray *)applyLocalization:(NSMutableArray *)specifiers {
-    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
-    for (PSSpecifier *spec in specifiers) {
+- (void)cacheOriginalLabels {
+    for (PSSpecifier *spec in _specifiers) {
         NSString *label = [spec propertyForKey:@"label"];
         if (label && label.length > 0) {
-            [spec setProperty:[loc localize:label] forKey:@"label"];
+            [spec setProperty:label forKey:kMoodyOriginalLabelKey];
         }
         NSString *footer = [spec propertyForKey:@"footerText"];
         if (footer && footer.length > 0) {
-            [spec setProperty:[loc localize:footer] forKey:@"footerText"];
+            [spec setProperty:footer forKey:kMoodyOriginalFooterKey];
         }
     }
-    return specifiers;
+}
+
+- (void)applyLocalization {
+    if (!_specifiers) return;
+    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
+    
+    for (PSSpecifier *spec in _specifiers) {
+        NSString *originalLabel = [spec propertyForKey:kMoodyOriginalLabelKey];
+        if (originalLabel && originalLabel.length > 0) {
+            NSString *localized = [loc localize:originalLabel];
+            [spec setProperty:localized forKey:@"label"];
+        }
+        NSString *originalFooter = [spec propertyForKey:kMoodyOriginalFooterKey];
+        if (originalFooter && originalFooter.length > 0) {
+            NSString *localizedFooter = [loc localize:originalFooter];
+            [spec setProperty:localizedFooter forKey:@"footerText"];
+        }
+    }
 }
 
 #pragma mark - Lifecycle
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self applyLocalization];
     BOOL isArabic = [[MoodyGlowLocalization sharedInstance] isArabic];
     UISemanticContentAttribute attr = isArabic
         ? UISemanticContentAttributeForceRightToLeft
@@ -50,6 +71,7 @@
         UITableView *t = [self performSelector:@selector(table)];
         if (t) t.semanticContentAttribute = attr;
     }
+    [self.tableView reloadData];
 }
 
 #pragma mark - Preference I/O
