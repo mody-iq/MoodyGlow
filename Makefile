@@ -12,7 +12,7 @@ MoodyGlow_FRAMEWORKS = UIKit CoreImage
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 BUNDLE_NAME = MoodyGlowPrefs
-MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m
+MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m MoodyGlowHeaderView.m MoodyGlowPrefs.m MoodyGlowLocalization.m
 MoodyGlowPrefs_INSTALL_PATH = /Library/PreferenceBundles
 MoodyGlowPrefs_CFLAGS = -fobjc-arc
 MoodyGlowPrefs_LDFLAGS = -undefined dynamic_lookup
