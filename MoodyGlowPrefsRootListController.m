@@ -1,6 +1,8 @@
 // Moody Glow - Root Preferences Controller
 // Developer: Moody
 
+#import <Preferences/PSListController.h>
+#import <Preferences/PSSpecifier.h>
 #import "MoodyGlowPrefsRootListController.h"
 
 @implementation MoodyGlowPrefsRootListController
