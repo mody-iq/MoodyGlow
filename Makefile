@@ -14,7 +14,6 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 BUNDLE_NAME = MoodyGlowPrefs
 MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m
 MoodyGlowPrefs_INSTALL_PATH = /Library/PreferenceBundles
-MoodyGlowPrefs_PRIVATE_FRAMEWORKS = Preferences
 MoodyGlowPrefs_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/bundle.mk
