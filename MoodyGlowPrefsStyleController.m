@@ -90,46 +90,69 @@ static NSString * const kMoodyStyleIndexKey = @"moodyStyleIndex";
     return nil;
 }
 
+#pragma mark - Specifier Lookup
+
+// Uses PSListController's built-in method for correct index-path → specifier mapping
+- (PSSpecifier *)safeSpecifierForIndexPath:(NSIndexPath *)indexPath {
+    if ([self respondsToSelector:@selector(specifierAtIndexPath:)]) {
+        SEL sel = NSSelectorFromString(@"specifierAtIndexPath:");
+        IMP imp = [self methodForSelector:sel];
+        if (imp) {
+            PSSpecifier *(*func)(id, SEL, NSIndexPath *) = (void *)imp;
+            PSSpecifier *spec = func(self, sel, indexPath);
+            if (spec) {
+                NSLog(@"[Moody Glow] specifierAtIndexPath:%@ -> %@", indexPath, [spec name]);
+                return spec;
+            }
+        }
+    }
+    return nil;
+}
+
 #pragma mark - Table View
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     
-    PSSpecifier *spec = [self specifierForIndexPath:indexPath];
-    if (spec) {
-        NSNumber *idx = [spec propertyForKey:kMoodyStyleIndexKey];
-        if (idx) {
-            NSInteger current = [[MoodyGlowPrefs sharedInstance] selectedAnimationIndex];
-            cell.accessoryType = (idx.integerValue == current)
-                ? UITableViewCellAccessoryCheckmark
-                : UITableViewCellAccessoryNone;
-        } else {
-            cell.accessoryType = UITableViewCellAccessoryNone;
-        }
+    PSSpecifier *spec = [self safeSpecifierForIndexPath:indexPath];
+    if (!spec) {
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        return cell;
     }
+    
+    NSNumber *idx = [spec propertyForKey:kMoodyStyleIndexKey];
+    if (idx) {
+        NSInteger current = [[MoodyGlowPrefs sharedInstance] selectedAnimationIndex];
+        cell.accessoryType = (idx.integerValue == current)
+            ? UITableViewCellAccessoryCheckmark
+            : UITableViewCellAccessoryNone;
+    } else {
+        cell.accessoryType = UITableViewCellAccessoryNone;
+    }
+    
     return cell;
-}
-
-- (PSSpecifier *)specifierForIndexPath:(NSIndexPath *)indexPath {
-    // PSListController stores specifiers in _specifiers; find the one matching this row
-    if (!_specifiers || indexPath.row >= (NSInteger)_specifiers.count) return nil;
-    return _specifiers[indexPath.row];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    PSSpecifier *spec = [self specifierForIndexPath:indexPath];
-    if (!spec) return;
+    PSSpecifier *spec = [self safeSpecifierForIndexPath:indexPath];
+    if (!spec) {
+        NSLog(@"[Moody Glow] No specifier for index path %@", indexPath);
+        return;
+    }
     
     NSNumber *idx = [spec propertyForKey:kMoodyStyleIndexKey];
-    if (!idx) return;
+    if (!idx) {
+        NSLog(@"[Moody Glow] Specifier has no style index (likely group header)");
+        return;
+    }
     
     NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:@"com.moody.moodyglow"];
     [d setInteger:idx.integerValue forKey:@"SelectedAnimation"];
     [d synchronize];
     
-    NSLog(@"[Moody Glow] Style selected: %ld", (long)idx.integerValue);
+    NSLog(@"[Moody Glow] Style selected: %ld (spec=%@)", (long)idx.integerValue, [spec name]);
     
     [tableView reloadData];
     
