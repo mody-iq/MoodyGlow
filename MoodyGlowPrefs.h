@@ -1,13 +1,12 @@
 // Moody Glow - Preferences Header
 // Developer: Moody
-// Purpose: Read user settings from NSUserDefaults
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
 typedef NS_ENUM(NSInteger, MoodyGlowColorMode) {
-    MoodyGlowColorModeIcon = 0,     // Use dominant color from app icon
-    MoodyGlowColorModeStatic = 1    // Use a user-defined static color
+    MoodyGlowColorModeIcon = 0,
+    MoodyGlowColorModeStatic = 1
 };
 
 @interface MoodyGlowPrefs : NSObject
@@ -38,6 +37,9 @@ typedef NS_ENUM(NSInteger, MoodyGlowColorMode) {
 // Color
 - (MoodyGlowColorMode)colorMode;
 - (UIColor *)staticColor;
+
+// Language
+- (NSInteger)languageMode;
 
 // Utility
 + (UIColor *)colorFromHexString:(NSString *)hex;
