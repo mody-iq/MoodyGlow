@@ -15,8 +15,7 @@ BUNDLE_NAME = MoodyGlowPrefs
 MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m
 MoodyGlowPrefs_INSTALL_PATH = /Library/PreferenceBundles
 MoodyGlowPrefs_CFLAGS = -fobjc-arc
-MoodyGlowPrefs_PRIVATE_FRAMEWORKS = Preferences
-MoodyGlowPrefs_LDFLAGS = -F$(THEOS)/sdks/$(SDKVERSION)/System/Library/PrivateFrameworks
+MoodyGlowPrefs_LDFLAGS = -weak_framework Preferences
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
