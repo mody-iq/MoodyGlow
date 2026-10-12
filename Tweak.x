@@ -3,7 +3,8 @@
 // Purpose: Enumerate notification-related classes on iOS 18.7
 
 #import <Foundation/Foundation.h>
-#import <objc/runtime>
+#import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 #import "MoodyGlowNotificationTracker.h"
 
 static NSString * const kDiagLogPath = @"/var/mobile/Documents/MoodyGlowDiag.log";
@@ -57,7 +58,6 @@ static void dumpMethodsOfClass(const char *className) {
     NSMutableString *out = [NSMutableString string];
     [out appendFormat:@"\n=== Methods of %s ===\n", className];
     
-    // Instance methods
     unsigned int imCount = 0;
     Method *im = class_copyMethodList(c, &imCount);
     for (unsigned int i = 0; i < imCount; i++) {
@@ -66,7 +66,6 @@ static void dumpMethodsOfClass(const char *className) {
     }
     free(im);
     
-    // Class methods (metaclass)
     Class mc = object_getClass(c);
     unsigned int cmCount = 0;
     Method *cm = class_copyMethodList(mc, &cmCount);
@@ -89,7 +88,6 @@ static void runDiagnostics(void) {
     dumpClassesMatching("Banner");
     dumpClassesMatching("NC");
     
-    // Dump methods of specific candidates
     dumpMethodsOfClass("NCNotificationDispatcher");
     dumpMethodsOfClass("SBLockScreenNotificationListController");
     dumpMethodsOfClass("SBNotificationCenterController");
@@ -102,7 +100,6 @@ static void runDiagnostics(void) {
 // --- iOS 14+ Group ---
 %group iOS14Plus
 
-// Keep original hooks for now (may fire or not, doesn't matter for diagnostics)
 %hook SBLockScreenNotificationListController
 - (void)observer:(id)observer addBulletin:(id)bulletin forFeed:(NSUInteger)feed playLightsAndSirens:(BOOL)lights withReply:(id)reply {
     NSLog(@"[MG-H1] fired");
@@ -128,10 +125,8 @@ static void runDiagnostics(void) {
     NSLog(@"[Moody Glow] ============ DIAGNOSTICS BUILD LOADED ============");
     %init(iOS14Plus);
     
-    // Also write to tracker log to confirm load
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     
-    // Wait 5 seconds for SpringBoard to fully initialize, then dump
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         runDiagnostics();
