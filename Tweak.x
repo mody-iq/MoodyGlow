@@ -1,6 +1,7 @@
-// Moody Glow - Full Tweak with Banners + Lock Screen
+// Moody Glow - Full Tweak with Notification Tracking
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
+// Stage 1: Track notifications only (visuals unchanged)
 
 #import <Foundation/Foundation.h>
 #import "PrivateHeaders.h"
@@ -9,6 +10,7 @@
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowBlackout.h"
 #import "MoodyGlowSystemState.h"
+#import "MoodyGlowNotificationTracker.h"
 
 #pragma mark - Deduplication Helpers
 
@@ -67,54 +69,51 @@ static NSTimeInterval moodyGlowEstimatedDuration(NSInteger index, NSInteger repe
 static void moodyGlowHandleNotification(NCNotificationRequest *request, BOOL fromLockScreen) {
     if (!request) return;
     
+    // ---- Always update the tracker FIRST ----
+    [[MoodyGlowNotificationTracker sharedInstance]
+     addNotificationWithID:request.notificationIdentifier
+                  bundleID:request.sectionIdentifier];
+    
     MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
     [prefs reload];
     
-    // ---- 1. Global enabled check ----
     if (![prefs isEnabled]) {
-        NSLog(@"[Moody Glow] Skipping: tweak disabled.");
+        NSLog(@"[Moody Glow] Tweak disabled. Skipping visual.");
         return;
     }
     
-    // ---- 2. Deduplication ----
     NSString *notifID = request.notificationIdentifier;
     if (moodyGlowWasRecentlyHandled(notifID)) {
-        NSLog(@"[Moody Glow] Skipping: duplicate (id=%@)", notifID);
+        NSLog(@"[Moody Glow] Skipping visual: duplicate (id=%@)", notifID);
         return;
     }
     moodyGlowMarkHandled(notifID);
     
-    // ---- 3. DND check ----
     if (![prefs showInDND] && [MoodyGlowSystemState isDNDActive]) {
-        NSLog(@"[Moody Glow] Skipping: DND active and ShowInDND=NO.");
+        NSLog(@"[Moody Glow] Skipping visual: DND active.");
         return;
     }
     
-    // ---- 4. Lock state logic ----
     BOOL locked = [MoodyGlowSystemState isDeviceLocked];
     
     if (locked) {
         if (![prefs isLockscreenEnabled]) {
-            NSLog(@"[Moody Glow] Skipping: Lockscreen disabled.");
+            NSLog(@"[Moody Glow] Skipping visual: Lockscreen disabled.");
             return;
         }
     } else {
         if (![prefs isUniversalEnabled]) {
-            NSLog(@"[Moody Glow] Skipping: Universal disabled and not on lockscreen.");
+            NSLog(@"[Moody Glow] Skipping visual: Universal disabled.");
             return;
         }
         if (![prefs showInActiveApp]) {
-            NSLog(@"[Moody Glow] Skipping: ShowInActiveApp disabled.");
+            NSLog(@"[Moody Glow] Skipping visual: ShowInActiveApp disabled.");
             return;
         }
     }
     
-    NSLog(@"[Moody Glow] ===== HANDLING NOTIFICATION (locked=%d, fromLockScreen=%d) =====", locked, fromLockScreen);
-    
     NSString *bundleID = request.sectionIdentifier;
-    NSLog(@"[Moody Glow] Bundle ID: %@", bundleID);
     
-    // ---- 5. Determine color ----
     UIColor *animColor = nil;
     if ([prefs colorMode] == MoodyGlowColorModeIcon) {
         if (bundleID && bundleID.length > 0) {
@@ -127,10 +126,9 @@ static void moodyGlowHandleNotification(NCNotificationRequest *request, BOOL fro
         animColor = [prefs staticColor];
     }
     
-    // ---- 6. Find window ----
     UIWindow *targetWindow = [MoodyGlowAnimations findBestWindow];
     if (!targetWindow) {
-        NSLog(@"[Moody Glow] No window available. Aborting.");
+        NSLog(@"[Moody Glow] No window available. Aborting visual.");
         return;
     }
     
@@ -140,25 +138,19 @@ static void moodyGlowHandleNotification(NCNotificationRequest *request, BOOL fro
     NSInteger repeat = [prefs repeatCount];
     CGFloat speed = [prefs speed];
     
-    // ---- 7. Blackout (only on lock screen) ----
     if (blackoutEnabled && locked) {
         [MoodyGlowBlackout showOverlayInWindow:targetWindow];
     }
     
-    // ---- 8. Play animation ----
     [MoodyGlowAnimations playAnimationWithIndex:animIndex
                                            color:animColor
                                           inView:targetWindow
                                      repeatCount:repeat
                                            speed:speed];
     
-    NSLog(@"[Moody Glow] Animation played (index=%ld, color=%@).", (long)animIndex, animColor);
-    
-    // ---- 9. Schedule blackout cleanup ----
     if (blackoutEnabled && locked) {
         NSTimeInterval duration = moodyGlowEstimatedDuration(animIndex, repeat, speed);
         NSTimeInterval delay = duration + 0.3;
-        
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (wakeAfter) {
                 [MoodyGlowBlackout removeOverlayAnimated:YES];
@@ -168,8 +160,6 @@ static void moodyGlowHandleNotification(NCNotificationRequest *request, BOOL fro
             }
         });
     }
-    
-    NSLog(@"[Moody Glow] ===============================");
 }
 
 #pragma mark - Test Animation Callback
@@ -181,10 +171,7 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
         [prefs reload];
         
         UIWindow *window = [MoodyGlowAnimations findBestWindow];
-        if (!window) {
-            NSLog(@"[Moody Glow] No window for test animation.");
-            return;
-        }
+        if (!window) return;
         
         UIColor *color = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
         if ([prefs colorMode] == MoodyGlowColorModeStatic) {
@@ -196,14 +183,11 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
                                               inView:window
                                          repeatCount:[prefs repeatCount]
                                                speed:[prefs speed]];
-        NSLog(@"[Moody Glow] Test animation played (index=%ld).", (long)[prefs selectedAnimationIndex]);
     });
 }
 
 // --- iOS 14+ Notification Capture Group ---
 %group iOS14Plus
-
-#pragma mark - Lock Screen Hook
 
 %hook SBLockScreenNotificationListController
 
@@ -216,9 +200,19 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
     %orig;
 }
 
-%end
+- (void)observer:(id)observer removeBulletin:(id)bulletin forFeed:(NSUInteger)feed {
+    NCNotificationRequest *request = nil;
+    if ([bulletin respondsToSelector:@selector(notificationRequest)]) {
+        request = [bulletin performSelector:@selector(notificationRequest)];
+    }
+    if (request) {
+        [[MoodyGlowNotificationTracker sharedInstance]
+         removeNotificationWithID:request.notificationIdentifier];
+    }
+    %orig;
+}
 
-#pragma mark - Dispatcher Hook (banners + all notifications)
+%end
 
 %hook NCNotificationDispatcher
 
@@ -238,7 +232,7 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] Tweak loaded. Initializing...");
+    NSLog(@"[Moody Glow] Tweak loaded. Stage 1 (Tracker) initialized.");
     %init(iOS14Plus);
     
     CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
@@ -247,5 +241,4 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
                                      CFSTR("com.moody.moodyglow.test"),
                                      NULL,
                                      CFNotificationSuspensionBehaviorDeliverImmediately);
-    NSLog(@"[Moody Glow] Test listener registered.");
 }
