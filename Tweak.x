@@ -1,14 +1,57 @@
-// Moody Glow - Stage 1.6: Correct Hooks for iOS 18.7
+// Moody Glow - Stage 2: Persistent Glow
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Uses the correct NCNotificationDispatcher methods discovered via diagnostics
+// Glow that stays on screen as long as notifications exist
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import "PrivateHeaders.h"
 #import "MoodyGlowNotificationTracker.h"
+#import "MoodyGlowPersistentGlow.h"
+#import "MoodyGlowColorExtractor.h"
+#import "MoodyGlowPrefs.h"
 
-// --- iOS 14+ Notification Capture Group ---
+#pragma mark - Glow Refresh Logic
+
+static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> *bundleIDs) {
+    MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
+    [prefs reload];
+    
+    // If tweak disabled → stop
+    if (![prefs isEnabled]) {
+        NSLog(@"[Moody Glow] Tweak disabled. Stopping glow.");
+        [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        return;
+    }
+    
+    // If no notifications → stop
+    if (count <= 0 || bundleIDs.count == 0) {
+        NSLog(@"[Moody Glow] No notifications left. Stopping glow.");
+        [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        return;
+    }
+    
+    // Determine the color of the first app (Stage 2: single color only)
+    NSString *firstBundle = bundleIDs.firstObject;
+    UIColor *color = nil;
+    
+    if ([prefs colorMode] == MoodyGlowColorModeIcon) {
+        color = [MoodyGlowColorExtractor colorForBundleID:firstBundle];
+        if (!color) {
+            color = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
+            NSLog(@"[Moody Glow] Icon color extraction failed for %@, using fallback.", firstBundle);
+        }
+    } else {
+        color = [prefs staticColor];
+    }
+    
+    NSLog(@"[Moody Glow] Refreshing glow: count=%ld, apps=%lu, color=%@",
+          (long)count, (unsigned long)bundleIDs.count, color);
+    
+    [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color animated:YES];
+}
+
+// --- iOS 14+ Group ---
 %group iOS14Plus
 
 #pragma mark - Main Dispatcher Hook
@@ -17,7 +60,7 @@
 
 - (void)postNotificationWithRequest:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK] postNotificationWithRequest: section=%@ id=%@",
+        NSLog(@"[MG-HOOK] post: section=%@ id=%@",
               request.sectionIdentifier, request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          addNotificationWithID:request.notificationIdentifier
@@ -28,7 +71,6 @@
 
 - (void)_didRemoveNotificationRequest:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK] _didRemoveNotificationRequest: id=%@", request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          removeNotificationWithID:request.notificationIdentifier];
     }
@@ -37,7 +79,6 @@
 
 - (void)withdrawNotificationWithRequest:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK] withdrawNotificationWithRequest: id=%@", request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          removeNotificationWithID:request.notificationIdentifier];
     }
@@ -46,7 +87,6 @@
 
 - (void)_clearUnsafeNotification:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK] _clearUnsafeNotification: id=%@", request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          removeNotificationWithID:request.notificationIdentifier];
     }
@@ -61,8 +101,6 @@
 
 - (void)postNotificationWithRequest:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK-SB] postNotificationWithRequest: section=%@ id=%@",
-              request.sectionIdentifier, request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          addNotificationWithID:request.notificationIdentifier
                       bundleID:request.sectionIdentifier];
@@ -72,7 +110,6 @@
 
 - (void)_didRemoveNotificationRequest:(NCNotificationRequest *)request {
     if (request) {
-        NSLog(@"[MG-HOOK-SB] _didRemoveNotificationRequest: id=%@", request.notificationIdentifier);
         [[MoodyGlowNotificationTracker sharedInstance]
          removeNotificationWithID:request.notificationIdentifier];
     }
@@ -85,9 +122,16 @@
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (v1.6) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Stage 2 - Persistent Glow) ============");
     %init(iOS14Plus);
     
+    // Register the change handler
+    [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
+        moodyGlowRefreshPersistentGlow(count, bundleIDs);
+    }];
+    
+    // Clean state
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Hooks registered on NCNotificationDispatcher and SBNCNotificationDispatcher.");
+    
+    NSLog(@"[Moody Glow] Persistent glow handler registered.");
 }
