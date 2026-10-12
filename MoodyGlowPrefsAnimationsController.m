@@ -1,6 +1,8 @@
 // Moody Glow - Animations Preferences Controller
 // Developer: Moody
 
+#import <Preferences/PSListController.h>
+#import <Preferences/PSSpecifier.h>
 #import "MoodyGlowPrefsAnimationsController.h"
 
 @implementation MoodyGlowPrefsAnimationsController
