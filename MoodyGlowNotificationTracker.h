@@ -23,4 +23,7 @@
 // List of unique bundle IDs (one per app that has notifications)
 - (NSArray<NSString *> *)uniqueBundleIDs;
 
+// Called (on main thread) whenever the tracked set changes
+- (void)setChangeHandler:(void (^)(NSInteger count, NSArray<NSString *> *bundleIDs))handler;
+
 @end
