@@ -14,37 +14,13 @@
         </dict>
         <dict>
             <key>cell</key>
-            <string>PSLinkListCell</string>
+            <string>PSLinkCell</string>
             <key>label</key>
             <string>Style</string>
-            <key>key</key>
-            <string>SelectedAnimation</string>
-            <key>defaults</key>
-            <string>com.moody.moodyglow</string>
-            <key>default</key>
-            <integer>2</integer>
             <key>detail</key>
-            <string>PSListItemsController</string>
-            <key>values</key>
-            <array>
-                <integer>0</integer>
-                <integer>1</integer>
-                <integer>2</integer>
-                <integer>3</integer>
-                <integer>4</integer>
-                <integer>5</integer>
-                <integer>6</integer>
-            </array>
-            <key>titles</key>
-            <array>
-                <string>Contrary</string>
-                <string>Light Bar</string>
-                <string>Outline</string>
-                <string>Particles</string>
-                <string>Pendulum</string>
-                <string>Pulse</string>
-                <string>Symmetric</string>
-            </array>
+            <string>MoodyGlowPrefsStyleController</string>
+            <key>isController</key>
+            <true/>
         </dict>
         <dict>
             <key>cell</key>
@@ -94,7 +70,7 @@
             <key>label</key>
             <string>COLOR MODE</string>
             <key>footerText</key>
-            <string>Choose the color mode for the animations</string>
+            <string>Color Mode Footer</string>
         </dict>
         <dict>
             <key>cell</key>
