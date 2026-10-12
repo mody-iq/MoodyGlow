@@ -22,7 +22,7 @@
     return _specifiers;
 }
 
-- (NSArray *)applyLocalization:(NSArray *)specifiers {
+- (NSMutableArray *)applyLocalization:(NSMutableArray *)specifiers {
     MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
     for (PSSpecifier *spec in specifiers) {
         NSString *label = [spec propertyForKey:@"label"];
