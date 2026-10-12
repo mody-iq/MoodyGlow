@@ -1,135 +1,93 @@
-// Moody Glow - Diagnostics Mode
+// Moody Glow - Stage 1.6: Correct Hooks for iOS 18.7
 // Developer: Moody
-// Purpose: Enumerate notification-related classes on iOS 18.7
+// Target: iOS 14.0 - 18.7 (RootHide)
+// Uses the correct NCNotificationDispatcher methods discovered via diagnostics
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <objc/runtime.h>
 #import "PrivateHeaders.h"
 #import "MoodyGlowNotificationTracker.h"
 
-static NSString * const kDiagLogPath = @"/var/mobile/Documents/MoodyGlowDiag.log";
-
-#pragma mark - Diagnostic Logger
-
-static void writeDiag(NSString *s) {
-    if (!s) return;
-    NSData *d = [s dataUsingEncoding:NSUTF8StringEncoding];
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kDiagLogPath];
-    if (!fh) {
-        [[NSFileManager defaultManager] createFileAtPath:kDiagLogPath contents:d attributes:nil];
-    } else {
-        [fh seekToEndOfFile];
-        [fh writeData:d];
-        [fh closeFile];
-    }
-    NSLog(@"[Moody Glow Diag] %@", s);
-}
-
-#pragma mark - Class / Method Dumpers
-
-static void dumpClassesMatching(const char *pattern) {
-    int count = objc_getClassList(NULL, 0);
-    if (count <= 0) return;
-    Class *classes = (Class *)malloc(sizeof(Class) * count);
-    if (!classes) return;
-    objc_getClassList(classes, count);
-    
-    NSMutableString *out = [NSMutableString string];
-    [out appendFormat:@"\n=== Classes matching '%s' ===\n", pattern];
-    int found = 0;
-    for (int i = 0; i < count; i++) {
-        const char *name = class_getName(classes[i]);
-        if (name && strstr(name, pattern)) {
-            [out appendFormat:@"  %s\n", name];
-            found++;
-        }
-    }
-    free(classes);
-    [out appendFormat:@"--- Total: %d ---\n", found];
-    writeDiag(out);
-}
-
-static void dumpMethodsOfClass(const char *className) {
-    Class c = objc_getClass(className);
-    if (!c) {
-        writeDiag([NSString stringWithFormat:@"\n=== %s NOT FOUND ===\n", className]);
-        return;
-    }
-    NSMutableString *out = [NSMutableString string];
-    [out appendFormat:@"\n=== Methods of %s ===\n", className];
-    
-    unsigned int imCount = 0;
-    Method *im = class_copyMethodList(c, &imCount);
-    for (unsigned int i = 0; i < imCount; i++) {
-        SEL sel = method_getName(im[i]);
-        [out appendFormat:@"  - %s\n", sel_getName(sel)];
-    }
-    free(im);
-    
-    Class mc = object_getClass(c);
-    unsigned int cmCount = 0;
-    Method *cm = class_copyMethodList(mc, &cmCount);
-    [out appendFormat:@"  --- class methods ---\n"];
-    for (unsigned int i = 0; i < cmCount; i++) {
-        SEL sel = method_getName(cm[i]);
-        [out appendFormat:@"  + %s\n", sel_getName(sel)];
-    }
-    free(cm);
-    
-    writeDiag(out);
-}
-
-static void runDiagnostics(void) {
-    writeDiag([NSString stringWithFormat:@"\n\n######## DIAGNOSTICS @ %@ ########\n", [NSDate date]]);
-    
-    dumpClassesMatching("Notification");
-    dumpClassesMatching("Bulletin");
-    dumpClassesMatching("LockScreen");
-    dumpClassesMatching("Banner");
-    dumpClassesMatching("NC");
-    
-    dumpMethodsOfClass("NCNotificationDispatcher");
-    dumpMethodsOfClass("SBLockScreenNotificationListController");
-    dumpMethodsOfClass("SBNotificationCenterController");
-    dumpMethodsOfClass("NCNotificationRequest");
-    dumpMethodsOfClass("SBLockScreenManager");
-    
-    writeDiag(@"\n######## DIAGNOSTICS DONE ########\n");
-}
-
-// --- iOS 14+ Group ---
+// --- iOS 14+ Notification Capture Group ---
 %group iOS14Plus
 
-%hook SBLockScreenNotificationListController
-- (void)observer:(id)observer addBulletin:(id)bulletin forFeed:(NSUInteger)feed playLightsAndSirens:(BOOL)lights withReply:(id)reply {
-    NSLog(@"[MG-H1] fired");
-    %orig;
-}
-- (void)observer:(id)observer removeBulletin:(id)bulletin forFeed:(NSUInteger)feed {
-    NSLog(@"[MG-H3] fired");
-    %orig;
-}
-%end
+#pragma mark - Main Dispatcher Hook
 
 %hook NCNotificationDispatcher
-- (void)postNotificationRequest:(NCNotificationRequest *)request {
-    NSLog(@"[MG-H4] fired: %@", request);
+
+- (void)postNotificationWithRequest:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK] postNotificationWithRequest: section=%@ id=%@",
+              request.sectionIdentifier, request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         addNotificationWithID:request.notificationIdentifier
+                      bundleID:request.sectionIdentifier];
+    }
     %orig;
 }
+
+- (void)_didRemoveNotificationRequest:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK] _didRemoveNotificationRequest: id=%@", request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         removeNotificationWithID:request.notificationIdentifier];
+    }
+    %orig;
+}
+
+- (void)withdrawNotificationWithRequest:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK] withdrawNotificationWithRequest: id=%@", request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         removeNotificationWithID:request.notificationIdentifier];
+    }
+    %orig;
+}
+
+- (void)_clearUnsafeNotification:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK] _clearUnsafeNotification: id=%@", request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         removeNotificationWithID:request.notificationIdentifier];
+    }
+    %orig;
+}
+
+%end
+
+#pragma mark - SpringBoard Subclass Hook
+
+%hook SBNCNotificationDispatcher
+
+- (void)postNotificationWithRequest:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK-SB] postNotificationWithRequest: section=%@ id=%@",
+              request.sectionIdentifier, request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         addNotificationWithID:request.notificationIdentifier
+                      bundleID:request.sectionIdentifier];
+    }
+    %orig;
+}
+
+- (void)_didRemoveNotificationRequest:(NCNotificationRequest *)request {
+    if (request) {
+        NSLog(@"[MG-HOOK-SB] _didRemoveNotificationRequest: id=%@", request.notificationIdentifier);
+        [[MoodyGlowNotificationTracker sharedInstance]
+         removeNotificationWithID:request.notificationIdentifier];
+    }
+    %orig;
+}
+
 %end
 
 %end // iOS14Plus
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ DIAGNOSTICS BUILD LOADED ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (v1.6) ============");
     %init(iOS14Plus);
     
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        runDiagnostics();
-    });
+    NSLog(@"[Moody Glow] Hooks registered on NCNotificationDispatcher and SBNCNotificationDispatcher.");
 }
