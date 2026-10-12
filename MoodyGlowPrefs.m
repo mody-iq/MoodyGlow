@@ -1,6 +1,5 @@
 // Moody Glow - Preferences Implementation
 // Developer: Moody
-// Purpose: Read user settings from NSUserDefaults (RootHide compatible)
 
 #import "MoodyGlowPrefs.h"
 
@@ -94,6 +93,10 @@ static NSString * const kMoodyGlowPrefsDomain = @"com.moody.moodyglow";
         return [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
     }
     return [MoodyGlowPrefs colorFromHexString:hex];
+}
+
+- (NSInteger)languageMode {
+    return [self integerForKey:@"Language" defaultValue:0];
 }
 
 + (UIColor *)colorFromHexString:(NSString *)hex {
