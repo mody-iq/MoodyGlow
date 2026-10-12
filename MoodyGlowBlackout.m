@@ -3,6 +3,7 @@
 // Purpose: Manage black overlay + screen wake/sleep for Blackout feature
 
 #import "MoodyGlowBlackout.h"
+#import <objc/runtime.h>
 
 static UIView *gBlackoutOverlay = nil;
 
@@ -92,12 +93,22 @@ static UIView *gBlackoutOverlay = nil;
         }
         
         SEL sel = NSSelectorFromString(@"turnOffScreen");
-        if ([controller respondsToSelector:sel]) {
-            [controller performSelector:sel];
-            NSLog(@"[Moody Glow] Screen turned off.");
-        } else {
+        if (![controller respondsToSelector:sel]) {
             NSLog(@"[Moody Glow] turnOffScreen selector not available.");
+            return;
         }
+        
+        // Use IMP (function pointer) to avoid ARC performSelector warning
+        IMP imp = [controller methodForSelector:sel];
+        if (!imp) {
+            NSLog(@"[Moody Glow] Could not obtain IMP for turnOffScreen.");
+            return;
+        }
+        
+        void (*func)(id, SEL) = (void *)imp;
+        func(controller, sel);
+        
+        NSLog(@"[Moody Glow] Screen turned off.");
     };
     
     if ([NSThread isMainThread]) {
