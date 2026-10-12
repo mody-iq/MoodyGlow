@@ -74,10 +74,11 @@
 #pragma mark - Change Notification
 
 - (void)notifyChange {
-    if (!self.changeHandler) return;
+    void (^handler)(NSInteger, NSArray<NSString *> *) = self.changeHandler;
+    if (!handler) return;
     NSInteger count = self.map.count;
     NSArray<NSString *> *apps = [self uniqueBundleIDs];
-    self.changeHandler(count, apps);
+    handler(count, apps);
 }
 
 #pragma mark - Public API
@@ -148,7 +149,11 @@
 }
 
 - (void)setChangeHandler:(void (^)(NSInteger, NSArray<NSString *> *))handler {
-    self.changeHandler = handler;
+    _changeHandler = [handler copy];
+}
+
+- (void (^)(NSInteger, NSArray<NSString *> *))changeHandler {
+    return _changeHandler;
 }
 
 @end
