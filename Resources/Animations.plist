@@ -118,6 +118,14 @@
         </dict>
         <dict>
             <key>cell</key>
+            <string>PSButtonCell</string>
+            <key>label</key>
+            <string>Choose Static Color</string>
+            <key>action</key>
+            <string>pickStaticColor</string>
+        </dict>
+        <dict>
+            <key>cell</key>
             <string>PSGroupCell</string>
         </dict>
         <dict>
