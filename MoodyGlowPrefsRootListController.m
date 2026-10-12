@@ -9,6 +9,9 @@
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowHeaderView.h"
 
+static NSString * const kMoodyOriginalLabelKey = @"moodyOriginalLabel";
+static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
+
 @implementation MoodyGlowPrefsRootListController
 
 #pragma mark - Specifiers
@@ -16,24 +19,41 @@
 - (NSArray *)specifiers {
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Root" target:self];
-        _specifiers = [self applyLocalization:_specifiers];
+        [self cacheOriginalLabels];
     }
+    [self applyLocalization];
     return _specifiers;
 }
 
-- (NSMutableArray *)applyLocalization:(NSMutableArray *)specifiers {
-    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
-    for (PSSpecifier *spec in specifiers) {
+- (void)cacheOriginalLabels {
+    for (PSSpecifier *spec in _specifiers) {
         NSString *label = [spec propertyForKey:@"label"];
         if (label && label.length > 0) {
-            [spec setProperty:[loc localize:label] forKey:@"label"];
+            [spec setProperty:label forKey:kMoodyOriginalLabelKey];
         }
         NSString *footer = [spec propertyForKey:@"footerText"];
         if (footer && footer.length > 0) {
-            [spec setProperty:[loc localize:footer] forKey:@"footerText"];
+            [spec setProperty:footer forKey:kMoodyOriginalFooterKey];
         }
     }
-    return specifiers;
+}
+
+- (void)applyLocalization {
+    if (!_specifiers) return;
+    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
+    
+    for (PSSpecifier *spec in _specifiers) {
+        NSString *originalLabel = [spec propertyForKey:kMoodyOriginalLabelKey];
+        if (originalLabel && originalLabel.length > 0) {
+            NSString *localized = [loc localize:originalLabel];
+            [spec setProperty:localized forKey:@"label"];
+        }
+        NSString *originalFooter = [spec propertyForKey:kMoodyOriginalFooterKey];
+        if (originalFooter && originalFooter.length > 0) {
+            NSString *localizedFooter = [loc localize:originalFooter];
+            [spec setProperty:localizedFooter forKey:@"footerText"];
+        }
+    }
 }
 
 #pragma mark - Lifecycle
@@ -48,7 +68,15 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self applyLocalization];
     [self applyRTLIfNeeded];
+    [self.tableView reloadData];
+    [self installHeaderView];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self installHeaderView];
 }
 
 - (void)applyRTLIfNeeded {
@@ -79,11 +107,11 @@
 - (void)installHeaderView {
     UITableView *tableView = [self findTableView];
     if (!tableView) return;
-    if (tableView.tableHeaderView) return;
     
     MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
     NSString *subtitle = [loc isArabic] ? @"الإصدار 1.0.0 · Moody" : @"v1.0.0 · by Moody";
     
+    // Always recreate to ensure correct language
     MoodyGlowHeaderView *header = [MoodyGlowHeaderView headerViewWithTitle:@"Moody Glow" subtitle:subtitle];
     header.frame = CGRectMake(0, 0, tableView.bounds.size.width, 215);
     tableView.tableHeaderView = header;
@@ -152,15 +180,15 @@
     
     NSLog(@"[Moody Glow] Language changed to mode %ld", (long)mode);
     
-    _specifiers = nil;
-    [self reloadSpecifiers];
+    // Re-apply localization and refresh UI immediately
+    [self applyLocalization];
     [self applyRTLIfNeeded];
+    [self.tableView reloadData];
     
+    // Reinstall header to update subtitle
     UITableView *t = [self findTableView];
     if (t) t.tableHeaderView = nil;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self installHeaderView];
-    });
+    [self installHeaderView];
 }
 
 #pragma mark - Reset Settings
@@ -187,9 +215,13 @@
         }
         [d synchronize];
         NSLog(@"[Moody Glow] All settings reset to defaults.");
-        _specifiers = nil;
-        [weakSelf reloadSpecifiers];
+        
+        [weakSelf applyLocalization];
         [weakSelf applyRTLIfNeeded];
+        [weakSelf.tableView reloadData];
+        UITableView *t = [weakSelf findTableView];
+        if (t) t.tableHeaderView = nil;
+        [weakSelf installHeaderView];
     }]];
     
     [self presentViewController:alert animated:YES completion:nil];
