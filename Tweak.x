@@ -1,4 +1,4 @@
-// Moody Glow - Full Tweak with Blackout
+// Moody Glow - Full Tweak with State Logic
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
 
@@ -8,21 +8,22 @@
 #import "MoodyGlowColorExtractor.h"
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowBlackout.h"
+#import "MoodyGlowSystemState.h"
 
-// --- Helper: Estimate animation duration based on index/repeat/speed ---
+// --- Helper: Estimate animation duration ---
 static NSTimeInterval moodyGlowEstimatedDuration(NSInteger index, NSInteger repeat, CGFloat speed) {
     if (speed < 0.1) speed = 0.1;
     if (repeat < 1) repeat = 1;
     
     NSTimeInterval base = 1.5;
     switch (index) {
-        case 0: base = 3.6; break; // Contrary (autoreverses)
-        case 1: base = 1.2; break; // Light Bar
-        case 2: base = 0.8; break; // Outline
-        case 3: base = 1.5; break; // Particles
-        case 4: base = 2.0; break; // Pendulum (autoreverses)
-        case 5: base = 1.5; break; // Pulse
-        case 6: base = 2.0; break; // Symmetric (autoreverses)
+        case 0: base = 3.6; break;
+        case 1: base = 1.2; break;
+        case 2: base = 0.8; break;
+        case 3: base = 1.5; break;
+        case 4: base = 2.0; break;
+        case 5: base = 1.5; break;
+        case 6: base = 2.0; break;
     }
     return (base * repeat) / speed;
 }
@@ -66,12 +67,43 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
     MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
     [prefs reload];
 
+    // ---- 1. Global enabled check ----
     if (![prefs isEnabled]) {
+        NSLog(@"[Moody Glow] Skipping: tweak disabled.");
         %orig;
         return;
     }
 
-    NSLog(@"[Moody Glow] ===== NEW NOTIFICATION =====");
+    // ---- 2. DND check ----
+    if (![prefs showInDND] && [MoodyGlowSystemState isDNDActive]) {
+        NSLog(@"[Moody Glow] Skipping: DND active and ShowInDND=NO.");
+        %orig;
+        return;
+    }
+
+    // ---- 3. Lock state + Universal / Lockscreen / Active App logic ----
+    BOOL locked = [MoodyGlowSystemState isDeviceLocked];
+    if (locked) {
+        if (![prefs isLockscreenEnabled]) {
+            NSLog(@"[Moody Glow] Skipping: Lockscreen disabled.");
+            %orig;
+            return;
+        }
+    } else {
+        // Device is unlocked (active app or home screen)
+        if (![prefs isUniversalEnabled]) {
+            NSLog(@"[Moody Glow] Skipping: Universal disabled and not on lockscreen.");
+            %orig;
+            return;
+        }
+        if (![prefs showInActiveApp]) {
+            NSLog(@"[Moody Glow] Skipping: ShowInActiveApp disabled.");
+            %orig;
+            return;
+        }
+    }
+
+    NSLog(@"[Moody Glow] ===== NEW NOTIFICATION (locked=%d) =====", locked);
 
     NSString *bundleID = nil;
     if ([bulletin respondsToSelector:@selector(notificationRequest)]) {
@@ -108,12 +140,12 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
     NSInteger repeat = [prefs repeatCount];
     CGFloat speed = [prefs speed];
 
-    // 1) Show blackout overlay BEFORE the animation
-    if (blackoutEnabled) {
+    // Show blackout overlay (only meaningful on lockscreen)
+    if (blackoutEnabled && locked) {
         [MoodyGlowBlackout showOverlayInWindow:targetWindow];
     }
 
-    // 2) Play the animation
+    // Play the animation
     [MoodyGlowAnimations playAnimationWithIndex:animIndex
                                            color:animColor
                                           inView:targetWindow
@@ -122,24 +154,21 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center, void *observer
 
     NSLog(@"[Moody Glow] Animation played (index=%ld, color=%@).", (long)animIndex, animColor);
 
-    // 3) Schedule blackout cleanup after animation finishes
-    if (blackoutEnabled) {
+    // Schedule blackout cleanup
+    if (blackoutEnabled && locked) {
         NSTimeInterval duration = moodyGlowEstimatedDuration(animIndex, repeat, speed);
         NSTimeInterval delay = duration + 0.3;
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (wakeAfter) {
-                // Reveal the lock screen
                 [MoodyGlowBlackout removeOverlayAnimated:YES];
             } else {
-                // Stay dark: remove overlay then turn off screen
                 [MoodyGlowBlackout removeOverlayAnimated:NO];
                 [MoodyGlowBlackout turnOffScreen];
             }
         });
     }
 
-    NSLog(@"[Moody Glow] Blackout: %@ | WakeAfter: %@", blackoutEnabled ? @"YES" : @"NO", wakeAfter ? @"YES" : @"NO");
     NSLog(@"[Moody Glow] ===============================");
 
     %orig;
