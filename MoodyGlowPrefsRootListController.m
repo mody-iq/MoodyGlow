@@ -7,6 +7,7 @@
 #import "MoodyGlowPrefsRootListController.h"
 #import "MoodyGlowLocalization.h"
 #import "MoodyGlowPrefs.h"
+#import "MoodyGlowHeaderView.h"
 
 @implementation MoodyGlowPrefsRootListController
 
@@ -40,6 +41,9 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     [self applyRTLIfNeeded];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self installHeaderView];
+    });
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -53,10 +57,36 @@
         ? UISemanticContentAttributeForceRightToLeft
         : UISemanticContentAttributeForceLeftToRight;
     self.view.semanticContentAttribute = attr;
-    if ([self respondsToSelector:@selector(table)]) {
-        UITableView *t = [self performSelector:@selector(table)];
-        if (t) t.semanticContentAttribute = attr;
+    UITableView *t = [self findTableView];
+    if (t) t.semanticContentAttribute = attr;
+}
+
+#pragma mark - Header
+
+- (UITableView *)findTableView {
+    return [self findTableViewInView:self.view];
+}
+
+- (UITableView *)findTableViewInView:(UIView *)view {
+    if ([view isKindOfClass:[UITableView class]]) return (UITableView *)view;
+    for (UIView *sub in view.subviews) {
+        UITableView *found = [self findTableViewInView:sub];
+        if (found) return found;
     }
+    return nil;
+}
+
+- (void)installHeaderView {
+    UITableView *tableView = [self findTableView];
+    if (!tableView) return;
+    if (tableView.tableHeaderView) return;
+    
+    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
+    NSString *subtitle = [loc isArabic] ? @"الإصدار 1.0.0 · Moody" : @"v1.0.0 · by Moody";
+    
+    MoodyGlowHeaderView *header = [MoodyGlowHeaderView headerViewWithTitle:@"Moody Glow" subtitle:subtitle];
+    header.frame = CGRectMake(0, 0, tableView.bounds.size.width, 215);
+    tableView.tableHeaderView = header;
 }
 
 #pragma mark - Preference I/O
@@ -125,6 +155,12 @@
     _specifiers = nil;
     [self reloadSpecifiers];
     [self applyRTLIfNeeded];
+    
+    UITableView *t = [self findTableView];
+    if (t) t.tableHeaderView = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self installHeaderView];
+    });
 }
 
 #pragma mark - Reset Settings
