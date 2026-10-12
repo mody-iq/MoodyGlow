@@ -124,6 +124,26 @@
             <key>default</key>
             <false/>
         </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSButtonCell</string>
+            <key>label</key>
+            <string>Reset Settings</string>
+            <key>action</key>
+            <string>resetSettings</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>ABOUT</string>
+            <key>footerText</key>
+            <string>Moody Glow v1.0.0\nDeveloped by Moody</string>
+        </dict>
     </array>
 </dict>
 </plist>
