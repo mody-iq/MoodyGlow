@@ -5,7 +5,7 @@ THEOS_PACKAGE_SCHEME = roothide
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = MoodyGlow
-MoodyGlow_FILES = Tweak.x MoodyGlowAnimations.m MoodyGlowBlackout.m MoodyGlowSystemState.m MoodyGlowColorExtractor.m MoodyGlowPrefs.m
+MoodyGlow_FILES = Tweak.x MoodyGlowAnimations.m MoodyGlowBlackout.m MoodyGlowSystemState.m MoodyGlowColorExtractor.m MoodyGlowPrefs.m MoodyGlowLocalization.m
 MoodyGlow_CFLAGS = -fobjc-arc
 MoodyGlow_FRAMEWORKS = UIKit CoreImage
 
