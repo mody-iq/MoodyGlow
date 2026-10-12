@@ -62,16 +62,33 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self applyLocalization];
+    
     BOOL isArabic = [[MoodyGlowLocalization sharedInstance] isArabic];
     UISemanticContentAttribute attr = isArabic
         ? UISemanticContentAttributeForceRightToLeft
         : UISemanticContentAttributeForceLeftToRight;
     self.view.semanticContentAttribute = attr;
-    if ([self respondsToSelector:@selector(table)]) {
-        UITableView *t = [self performSelector:@selector(table)];
-        if (t) t.semanticContentAttribute = attr;
+    
+    UITableView *t = [self findTableView];
+    if (t) {
+        t.semanticContentAttribute = attr;
+        [t reloadData];
     }
-    [self.tableView reloadData];
+}
+
+#pragma mark - Table Finder
+
+- (UITableView *)findTableView {
+    return [self findTableViewInView:self.view];
+}
+
+- (UITableView *)findTableViewInView:(UIView *)view {
+    if ([view isKindOfClass:[UITableView class]]) return (UITableView *)view;
+    for (UIView *sub in view.subviews) {
+        UITableView *found = [self findTableViewInView:sub];
+        if (found) return found;
+    }
+    return nil;
 }
 
 #pragma mark - Preference I/O
