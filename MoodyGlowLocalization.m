@@ -1,6 +1,5 @@
 // Moody Glow - Localization Manager Implementation
 // Developer: Moody
-// Purpose: Provide localized strings for English and Arabic
 
 #import "MoodyGlowLocalization.h"
 #import "MoodyGlowPrefs.h"
@@ -20,8 +19,6 @@
     NSInteger mode = [[MoodyGlowPrefs sharedInstance] languageMode];
     if (mode == 1) return @"en";
     if (mode == 2) return @"ar";
-    
-    // Mode 0 = System: detect from device
     NSString *sysLang = [[NSLocale preferredLanguages] firstObject];
     if ([sysLang hasPrefix:@"ar"]) return @"ar";
     return @"en";
@@ -36,7 +33,6 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         dict = @{
-            // Root sections
             @"GENERAL": @"GENERAL",
             @"Enabled": @"Enabled",
             @"Animations": @"Animations",
@@ -60,8 +56,6 @@
             @"Reset Settings Message": @"Are you sure you want to reset all settings to their defaults?",
             @"ABOUT": @"ABOUT",
             @"ABOUT_FOOTER": @"Moody Glow v1.0.0\nDeveloped by Moody",
-            
-            // Animations page
             @"ANIMATION STYLE": @"ANIMATION STYLE",
             @"Style": @"Style",
             @"Contrary": @"Contrary",
@@ -90,7 +84,6 @@
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         dict = @{
-            // Root sections
             @"GENERAL": @"عام",
             @"Enabled": @"مفعّل",
             @"Animations": @"الرسوم المتحركة",
@@ -114,8 +107,6 @@
             @"Reset Settings Message": @"هل أنت متأكد من إعادة تعيين جميع الإعدادات إلى الوضع الافتراضي؟",
             @"ABOUT": @"حول",
             @"ABOUT_FOOTER": @"Moody Glow الإصدار 1.0.0\nتطوير Moody",
-            
-            // Animations page
             @"ANIMATION STYLE": @"نمط الرسم المتحرك",
             @"Style": @"النمط",
             @"Contrary": @"معاكس",
