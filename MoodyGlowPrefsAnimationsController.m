@@ -28,9 +28,12 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
 
 - (void)cacheOriginalLabels {
     for (PSSpecifier *spec in _specifiers) {
-        NSString *label = [spec propertyForKey:@"label"];
-        if (label && label.length > 0) {
-            [spec setProperty:label forKey:kMoodyOriginalLabelKey];
+        NSString *n = [spec name];
+        if (!n || n.length == 0) {
+            n = [spec propertyForKey:@"label"];
+        }
+        if (n && n.length > 0) {
+            [spec setProperty:n forKey:kMoodyOriginalLabelKey];
         }
         NSString *footer = [spec propertyForKey:@"footerText"];
         if (footer && footer.length > 0) {
@@ -47,6 +50,7 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
         NSString *originalLabel = [spec propertyForKey:kMoodyOriginalLabelKey];
         if (originalLabel && originalLabel.length > 0) {
             NSString *localized = [loc localize:originalLabel];
+            [spec setName:localized];
             [spec setProperty:localized forKey:@"label"];
         }
         NSString *originalFooter = [spec propertyForKey:kMoodyOriginalFooterKey];
