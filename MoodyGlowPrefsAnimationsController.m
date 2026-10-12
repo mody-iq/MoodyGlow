@@ -5,18 +5,54 @@
 #import <Preferences/PSSpecifier.h>
 #import <UIKit/UIKit.h>
 #import "MoodyGlowPrefsAnimationsController.h"
+#import "MoodyGlowLocalization.h"
 
 @interface MoodyGlowPrefsAnimationsController () <UIColorPickerViewControllerDelegate>
 @end
 
 @implementation MoodyGlowPrefsAnimationsController
 
+#pragma mark - Specifiers
+
 - (NSArray *)specifiers {
     if (!_specifiers) {
         _specifiers = [self loadSpecifiersFromPlistName:@"Animations" target:self];
+        _specifiers = [self applyLocalization:_specifiers];
     }
     return _specifiers;
 }
+
+- (NSArray *)applyLocalization:(NSArray *)specifiers {
+    MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
+    for (PSSpecifier *spec in specifiers) {
+        NSString *label = [spec propertyForKey:@"label"];
+        if (label && label.length > 0) {
+            [spec setProperty:[loc localize:label] forKey:@"label"];
+        }
+        NSString *footer = [spec propertyForKey:@"footerText"];
+        if (footer && footer.length > 0) {
+            [spec setProperty:[loc localize:footer] forKey:@"footerText"];
+        }
+    }
+    return specifiers;
+}
+
+#pragma mark - Lifecycle
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    BOOL isArabic = [[MoodyGlowLocalization sharedInstance] isArabic];
+    UISemanticContentAttribute attr = isArabic
+        ? UISemanticContentAttributeForceRightToLeft
+        : UISemanticContentAttributeForceLeftToRight;
+    self.view.semanticContentAttribute = attr;
+    if ([self respondsToSelector:@selector(table)]) {
+        UITableView *t = [self performSelector:@selector(table)];
+        if (t) t.semanticContentAttribute = attr;
+    }
+}
+
+#pragma mark - Preference I/O
 
 - (id)readPreferenceValue:(PSSpecifier *)specifier {
     NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:@"com.moody.moodyglow"];
@@ -81,8 +117,6 @@
         picker.selectedColor = [self currentStaticColor];
         picker.supportsAlpha = NO;
         [self presentViewController:picker animated:YES completion:nil];
-    } else {
-        NSLog(@"[Moody Glow] UIColorPickerViewController requires iOS 14+");
     }
 }
 
