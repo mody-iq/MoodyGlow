@@ -6,6 +6,7 @@
 #import <UIKit/UIKit.h>
 #import "MoodyGlowPrefsRootListController.h"
 #import "MoodyGlowLocalization.h"
+#import "MoodyGlowPrefs.h"
 
 @implementation MoodyGlowPrefsRootListController
 
@@ -19,7 +20,7 @@
     return _specifiers;
 }
 
-- (NSArray *)applyLocalization:(NSArray *)specifiers {
+- (NSMutableArray *)applyLocalization:(NSMutableArray *)specifiers {
     MoodyGlowLocalization *loc = [MoodyGlowLocalization sharedInstance];
     for (PSSpecifier *spec in specifiers) {
         NSString *label = [spec propertyForKey:@"label"];
@@ -121,7 +122,6 @@
     
     NSLog(@"[Moody Glow] Language changed to mode %ld", (long)mode);
     
-    // Reset specifiers cache to force re-localization
     _specifiers = nil;
     [self reloadSpecifiers];
     [self applyRTLIfNeeded];
