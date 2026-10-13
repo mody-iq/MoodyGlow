@@ -33,6 +33,7 @@ typedef NS_ENUM(NSInteger, MoodyGlowColorMode) {
 - (NSInteger)selectedAnimationIndex;
 - (NSInteger)repeatCount;
 - (CGFloat)speed;
+- (CGFloat)breathingSpeed;
 
 // Color
 - (MoodyGlowColorMode)colorMode;
