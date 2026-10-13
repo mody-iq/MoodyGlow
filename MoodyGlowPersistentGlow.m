@@ -10,12 +10,13 @@ static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
 
 static UIWindow *gPGWindow = nil;
-static CAShapeLayer *gPGLayer = nil;         // Primary layer (outline / symmetric-right)
-static CAShapeLayer *gPGSecondLayer = nil;   // Secondary layer (symmetric-left only)
+static CAShapeLayer *gPGLayer = nil;
+static CAShapeLayer *gPGSecondLayer = nil;
 static UIColor *gPGCurrentColor = nil;
 static NSInteger gPGStyle = kMoodyStyleOutline;
 static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
+static CGFloat gPGDrawSpeed = 1.0;
 
 @implementation MoodyGlowPersistentGlow
 
@@ -112,22 +113,14 @@ static CGFloat gPGBreathingSpeed = 1.0;
     CGFloat notchRight = notchLeft + notchWidth;
     
     UIBezierPath *path = [UIBezierPath bezierPath];
-    // Start at bottom-right corner of the notch
     [path moveToPoint:CGPointMake(notchRight, notchHeight)];
-    // Up the right side of the notch
     [path addLineToPoint:CGPointMake(notchRight, notchCornerRadius)];
-    // Curve out of the notch onto the top edge
     [path addQuadCurveToPoint:CGPointMake(notchRight + notchCornerRadius, 0)
                  controlPoint:CGPointMake(notchRight, 0)];
-    // Across the top edge to the top-right corner
     [path addLineToPoint:CGPointMake(w - cornerRadius, 0)];
-    // Around top-right corner
     [path addQuadCurveToPoint:CGPointMake(w, cornerRadius) controlPoint:CGPointMake(w, 0)];
-    // Down the right side
     [path addLineToPoint:CGPointMake(w, h - cornerRadius)];
-    // Around bottom-right corner
     [path addQuadCurveToPoint:CGPointMake(w - cornerRadius, h) controlPoint:CGPointMake(w, h)];
-    // Along the bottom edge to bottom-center
     [path addLineToPoint:CGPointMake(w / 2.0, h)];
     return path;
 }
@@ -142,22 +135,14 @@ static CGFloat gPGBreathingSpeed = 1.0;
     CGFloat notchLeft = (w - notchWidth) / 2.0;
     
     UIBezierPath *path = [UIBezierPath bezierPath];
-    // Start at bottom-left corner of the notch
     [path moveToPoint:CGPointMake(notchLeft, notchHeight)];
-    // Up the left side of the notch
     [path addLineToPoint:CGPointMake(notchLeft, notchCornerRadius)];
-    // Curve out of the notch onto the top edge
     [path addQuadCurveToPoint:CGPointMake(notchLeft - notchCornerRadius, 0)
                  controlPoint:CGPointMake(notchLeft, 0)];
-    // Across the top edge to the top-left corner
     [path addLineToPoint:CGPointMake(cornerRadius, 0)];
-    // Around top-left corner
     [path addQuadCurveToPoint:CGPointMake(0, cornerRadius) controlPoint:CGPointMake(0, 0)];
-    // Down the left side
     [path addLineToPoint:CGPointMake(0, h - cornerRadius)];
-    // Around bottom-left corner
     [path addQuadCurveToPoint:CGPointMake(cornerRadius, h) controlPoint:CGPointMake(0, h)];
-    // Along the bottom edge to bottom-center
     [path addLineToPoint:CGPointMake(w / 2.0, h)];
     return path;
 }
@@ -234,13 +219,11 @@ static CGFloat gPGBreathingSpeed = 1.0;
     [layer addAnimation:draw forKey:@"pg_symmetric"];
 }
 
-- (void)startAnimationForStyle:(NSInteger)style
-                         layer:(CAShapeLayer *)layer
-                         speed:(CGFloat)speed {
+- (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
     if (style == kMoodyStyleSymmetric) {
-        [self startSymmetricAnimationOnLayer:layer speed:speed];
+        [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
     } else {
-        [self startBreathingAnimationOnLayer:layer speed:speed];
+        [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
     }
 }
 
@@ -278,14 +261,12 @@ static CGFloat gPGBreathingSpeed = 1.0;
         UIView *host = w.rootViewController.view;
         if (!host) return;
         
-        // If style changed while active → tear down everything
         if ((gPGLayer || gPGSecondLayer) && gPGStyle != style) {
             NSLog(@"[Moody Glow PG] Style change (%ld -> %ld). Recreating.", (long)gPGStyle, (long)style);
             [self teardownLayers];
         }
         
         if (!gPGLayer && !gPGSecondLayer) {
-            // ---- First time: create layers ----
             if (style == kMoodyStyleSymmetric) {
                 UIBezierPath *rightPath = [self symmetricRightPathForBounds:host.bounds];
                 UIBezierPath *leftPath  = [self symmetricLeftPathForBounds:host.bounds];
@@ -294,8 +275,8 @@ static CGFloat gPGBreathingSpeed = 1.0;
                 [host.layer addSublayer:gPGLayer];
                 [host.layer addSublayer:gPGSecondLayer];
                 
-                [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGBreathingSpeed];
-                [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGBreathingSpeed];
+                [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
+                [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed];
             } else {
                 gPGLayer = [self createOutlineLayerWithColor:color bounds:host.bounds];
                 [host.layer addSublayer:gPGLayer];
@@ -305,10 +286,9 @@ static CGFloat gPGBreathingSpeed = 1.0;
             gPGStyle = style;
             gPGCurrentColor = color;
             gPGActive = YES;
-            NSLog(@"[Moody Glow PG] Glow STARTED. style=%ld color=%@ speed=%.2f",
-                  (long)style, color, gPGBreathingSpeed);
+            NSLog(@"[Moody Glow PG] Glow STARTED. style=%ld color=%@ breathe=%.2f draw=%.2f",
+                  (long)style, color, gPGBreathingSpeed, gPGDrawSpeed);
         } else {
-            // ---- Already active: update color if changed ----
             if (![gPGCurrentColor isEqual:color]) {
                 gPGCurrentColor = color;
                 
@@ -382,16 +362,33 @@ static CGFloat gPGBreathingSpeed = 1.0;
 - (void)setBreathingSpeed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     gPGBreathingSpeed = speed;
-    NSLog(@"[Moody Glow PG] Speed set to %.2f", speed);
+    NSLog(@"[Moody Glow PG] Breathing speed = %.2f", speed);
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gPGLayer && gPGActive) {
             [self removeAllStyleAnimationsFromLayer:gPGLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGLayer speed:speed];
+            [self startAnimationForStyle:gPGStyle layer:gPGLayer];
         }
         if (gPGSecondLayer && gPGActive) {
             [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer speed:speed];
+            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer];
+        }
+    });
+}
+
+- (void)setDrawSpeed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    gPGDrawSpeed = speed;
+    NSLog(@"[Moody Glow PG] Draw speed = %.2f", speed);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gPGLayer && gPGActive) {
+            [self removeAllStyleAnimationsFromLayer:gPGLayer];
+            [self startAnimationForStyle:gPGStyle layer:gPGLayer];
+        }
+        if (gPGSecondLayer && gPGActive) {
+            [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
+            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer];
         }
     });
 }
