@@ -3,12 +3,16 @@
 // Supports: Outline (style 2), Symmetric (style 6)
 // Host strategy: SBCoverSheetWindow while it is visible (lock screen),
 // own overlay window otherwise. A watch timer switches host automatically.
+// When the device is unlocked (overlay host) the glow auto-stops after the
+// system banner duration (7s); every new show call resets that timer.
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 
 static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
+
+static const NSTimeInterval kMoodyBannerDuration = 7.0;
 
 static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
 
@@ -22,6 +26,7 @@ static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
 static CGFloat gPGDrawSpeed = 1.0;
 static NSTimer *gPGWatchTimer = nil;
+static NSTimer *gPGBannerTimer = nil;
 
 @implementation MoodyGlowPersistentGlow
 
@@ -395,6 +400,41 @@ static NSTimer *gPGWatchTimer = nil;
     gPGHostLayer = nil;
 }
 
+#pragma mark - Banner Timer (unlocked device: glow lives as long as the system banner)
+
+- (void)cancelBannerTimer {
+    if (gPGBannerTimer) {
+        [gPGBannerTimer invalidate];
+        gPGBannerTimer = nil;
+    }
+}
+
+- (void)restartBannerTimer {
+    [self cancelBannerTimer];
+    NSTimer *t = [NSTimer timerWithTimeInterval:kMoodyBannerDuration
+                                         target:self
+                                       selector:@selector(bannerTimerFired)
+                                       userInfo:nil
+                                        repeats:NO];
+    [[NSRunLoop mainRunLoop] addTimer:t forMode:NSRunLoopCommonModes];
+    gPGBannerTimer = t;
+}
+
+- (void)bannerTimerFired {
+    gPGBannerTimer = nil;
+    [self writePGLog:@"Banner timer expired - stopping glow"];
+    [self stopAnimated:YES];
+}
+
+// Lock screen: glow stays until the tracker stops it. Unlocked: 7s banner timer.
+- (void)applyTimerPolicyForSource:(NSString *)source {
+    if ([source isEqualToString:@"Overlay"]) {
+        [self restartBannerTimer];
+    } else {
+        [self cancelBannerTimer];
+    }
+}
+
 #pragma mark - Watch Timer (switches host between lock screen and unlocked)
 
 - (void)startWatchTimer {
@@ -436,6 +476,7 @@ static NSTimer *gPGWatchTimer = nil;
         [self buildLayersOnHost:host bounds:bounds color:color style:style];
         [self writePGLog:[NSString stringWithFormat:@"Host switched -> %@ bounds=%@",
                           source, NSStringFromCGRect(bounds)]];
+        [self applyTimerPolicyForSource:source];
     }
 }
 
@@ -500,6 +541,12 @@ static NSTimer *gPGWatchTimer = nil;
             }
         }
 
+        // Every show call (new notification) restarts the 7s banner timer when unlocked
+        [self applyTimerPolicyForSource:source];
+        if ([source isEqualToString:@"Overlay"]) {
+            [self writePGLog:@"Banner timer (re)started: 7s"];
+        }
+
         [self startWatchTimer];
     });
 }
@@ -507,6 +554,7 @@ static NSTimer *gPGWatchTimer = nil;
 - (void)stopAnimated:(BOOL)animated {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self stopWatchTimer];
+        [self cancelBannerTimer];
 
         if (!gPGLayer && !gPGSecondLayer) {
             gPGActive = NO;
