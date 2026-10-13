@@ -1,0 +1,40 @@
+name: Build Moody Glow
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          brew install ldid dpkg
+
+      - name: Install Theos (RootHide)
+        run: |
+          export THEOS=${{ github.workspace }}/theos
+          git clone --recursive https://github.com/roothide/theos.git $THEOS
+          curl -LO https://github.com/theos/sdks/archive/master.zip
+          unzip master.zip
+          mkdir -p $THEOS/sdks
+          mv sdks-master/*.sdk $THEOS/sdks/
+          rm -rf master.zip sdks-master
+
+      - name: Build Tweak
+        run: |
+          export THEOS=${{ github.workspace }}/theos
+          export PATH=$THEOS/bin:$PATH
+          make clean
+          make package FINALPACKAGE=1
+
+      - name: Upload Deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: MoodyGlow-Deb
+          path: packages/*.deb
