@@ -70,6 +70,30 @@
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
+            <string>Glow Thickness</string>
+            <key>footerText</key>
+            <string>Glow Thickness Footer</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSliderCell</string>
+            <key>key</key>
+            <string>GlowThickness</string>
+            <key>defaults</key>
+            <string>com.moody.moodyglow</string>
+            <key>default</key>
+            <real>6.0</real>
+            <key>min</key>
+            <real>1.0</real>
+            <key>max</key>
+            <real>12.0</real>
+            <key>showValue</key>
+            <true/>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
             <string>COLOR MODE</string>
             <key>footerText</key>
             <string>Color Mode Footer</string>
