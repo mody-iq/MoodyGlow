@@ -1,11 +1,5 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
-// Supports: Outline (style 2), Symmetric (style 6)
-// Features:
-//   - Host switching: SBCoverSheetWindow (locked) <-> own overlay (unlocked)
-//   - Banner timer: unlocked glow stops 7s after last notification
-//   - Color cycling: cycles through colors every 3s with cross-fade
-//   - List change detection: list changed -> restart from color 0
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
@@ -15,7 +9,7 @@ static const NSInteger kMoodyStyleSymmetric = 6;
 
 static const NSTimeInterval kMoodyBannerDuration = 7.0;
 static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
-static const NSTimeInterval kMoodyCrossfadeDuration = 0.4;
+static const NSTimeInterval kMoodyDramaticDuration = 1.2;
 
 static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
 
@@ -29,6 +23,7 @@ static NSInteger gPGStyle = kMoodyStyleOutline;
 static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
 static CGFloat gPGDrawSpeed = 1.0;
+static CGFloat gPGGlowThickness = 6.0;
 static NSTimer *gPGWatchTimer = nil;
 static NSTimer *gPGBannerTimer = nil;
 static NSTimer *gPGColorTimer = nil;
@@ -284,7 +279,7 @@ static NSTimer *gPGColorTimer = nil;
     layer.path = path.CGPath;
     layer.strokeColor = color.CGColor;
     layer.fillColor = [UIColor clearColor].CGColor;
-    layer.lineWidth = 4.0;
+    layer.lineWidth = gPGGlowThickness;
     layer.lineCap = kCALineCapRound;
     layer.lineJoin = kCALineJoinRound;
     layer.shadowColor = color.CGColor;
@@ -302,7 +297,7 @@ static NSTimer *gPGColorTimer = nil;
     layer.path = path.CGPath;
     layer.strokeColor = color.CGColor;
     layer.fillColor = [UIColor clearColor].CGColor;
-    layer.lineWidth = 4.0;
+    layer.lineWidth = gPGGlowThickness;
     layer.lineCap = kCALineCapRound;
     layer.lineJoin = kCALineJoinRound;
     layer.shadowColor = color.CGColor;
@@ -361,7 +356,7 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_symmetric"];
 }
 
-#pragma mark - Color Cycling
+#pragma mark - Color Cycling (Dramatic Transition)
 
 - (void)applyColor:(UIColor *)color animated:(BOOL)animated {
     NSArray<CAShapeLayer *> *layers = @[];
@@ -373,15 +368,33 @@ static NSTimer *gPGColorTimer = nil;
             CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
             colorAnim.fromValue = (id)layer.strokeColor;
             colorAnim.toValue = (id)color.CGColor;
-            colorAnim.duration = kMoodyCrossfadeDuration;
+            colorAnim.duration = kMoodyDramaticDuration;
             colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             [layer addAnimation:colorAnim forKey:@"pg_color"];
 
-            CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
-            shadowAnim.fromValue = (id)layer.shadowColor;
-            shadowAnim.toValue = (id)color.CGColor;
-            shadowAnim.duration = kMoodyCrossfadeDuration;
-            [layer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
+            CABasicAnimation *shadowColor = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
+            shadowColor.fromValue = (id)layer.shadowColor;
+            shadowColor.toValue = (id)color.CGColor;
+            shadowColor.duration = kMoodyDramaticDuration;
+            shadowColor.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:shadowColor forKey:@"pg_shadow_color"];
+
+            CABasicAnimation *shadowPulse = [CABasicAnimation animationWithKeyPath:@"shadowRadius"];
+            shadowPulse.fromValue = @12.0;
+            shadowPulse.toValue = @20.0;
+            shadowPulse.duration = kMoodyDramaticDuration * 0.5;
+            shadowPulse.autoreverses = YES;
+            shadowPulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:shadowPulse forKey:@"pg_shadow_pulse"];
+
+            CGFloat base = gPGGlowThickness;
+            CABasicAnimation *widthPulse = [CABasicAnimation animationWithKeyPath:@"lineWidth"];
+            widthPulse.fromValue = @(base);
+            widthPulse.toValue = @(base * 1.6);
+            widthPulse.duration = kMoodyDramaticDuration * 0.5;
+            widthPulse.autoreverses = YES;
+            widthPulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:widthPulse forKey:@"pg_width_pulse"];
         }
         layer.strokeColor = color.CGColor;
         layer.shadowColor = color.CGColor;
@@ -593,9 +606,9 @@ static NSTimer *gPGColorTimer = nil;
             [self buildLayersOnHost:host bounds:bounds color:initial style:style];
             gPGStyle = style;
             gPGActive = YES;
-            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld host=%@ bounds=%@ colors=%lu",
+            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld host=%@ bounds=%@ colors=%lu thickness=%.1f",
                               (long)style, source, NSStringFromCGRect(bounds),
-                              (unsigned long)gPGColors.count]];
+                              (unsigned long)gPGColors.count, gPGGlowThickness]];
         } else {
             [self applyColorAtIndex:gPGColorIndex animated:YES];
         }
@@ -613,7 +626,6 @@ static NSTimer *gPGColorTimer = nil;
     });
 }
 
-// Backward-compatible API (single color)
 - (void)showWithColor:(UIColor *)color
                 style:(NSInteger)style
              animated:(BOOL)animated {
@@ -649,6 +661,8 @@ static NSTimer *gPGColorTimer = nil;
             [self removeAllStyleAnimationsFromLayer:layer];
             [layer removeAnimationForKey:@"pg_color"];
             [layer removeAnimationForKey:@"pg_shadow_color"];
+            [layer removeAnimationForKey:@"pg_shadow_pulse"];
+            [layer removeAnimationForKey:@"pg_width_pulse"];
 
             if (animated) {
                 CABasicAnimation *fadeOut = [CABasicAnimation animationWithKeyPath:@"opacity"];
