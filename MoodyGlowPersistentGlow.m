@@ -702,6 +702,22 @@ static NSTimer *gPGColorTimer = nil;
     });
 }
 
+- (void)setGlowThickness:(CGFloat)thickness {
+    if (thickness < 1.0) thickness = 1.0;
+    if (thickness > 12.0) thickness = 12.0;
+    gPGGlowThickness = thickness;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gPGLayer) {
+            gPGLayer.lineWidth = thickness;
+        }
+        if (gPGSecondLayer) {
+            gPGSecondLayer.lineWidth = thickness;
+        }
+        [self writePGLog:[NSString stringWithFormat:@"Thickness set to %.1f", thickness]];
+    });
+}
+
 - (BOOL)isActive {
     return gPGActive;
 }
