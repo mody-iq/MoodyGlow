@@ -1,6 +1,7 @@
-// Moody Glow - Lock State Awareness
+// Moody Glow - Tweak.x
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
+// Features: notification tracking, lock-aware glow, color cycling
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -11,46 +12,98 @@
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowSystemState.h"
 
+#pragma mark - Color Cache
+
+static NSMutableDictionary<NSString *, UIColor *> *gColorCache = nil;
+static dispatch_queue_t gColorCacheQueue = nil;
+
+static void moodyGlowInitColorCacheIfNeeded(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        gColorCache = [NSMutableDictionary dictionary];
+        gColorCacheQueue = dispatch_queue_create("com.moody.moodyglow.colorcache", DISPATCH_QUEUE_SERIAL);
+    });
+}
+
+static UIColor *moodyGlowCachedColorForBundle(NSString *bundleID) {
+    if (!bundleID || bundleID.length == 0) return nil;
+    moodyGlowInitColorCacheIfNeeded();
+
+    __block UIColor *cached = nil;
+    dispatch_sync(gColorCacheQueue, ^{
+        cached = gColorCache[bundleID];
+    });
+    if (cached) return cached;
+
+    UIColor *fetched = [MoodyGlowColorExtractor colorForBundleID:bundleID];
+    if (fetched) {
+        dispatch_async(gColorCacheQueue, ^{
+            gColorCache[bundleID] = fetched;
+        });
+    }
+    return fetched;
+}
+
 #pragma mark - Glow Refresh Logic
 
 static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> *bundleIDs) {
     MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
     [prefs reload];
-    
+
     if (![prefs isEnabled]) {
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
         return;
     }
-    
+
     if (count <= 0 || bundleIDs.count == 0) {
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
         return;
     }
-    
+
     CGFloat breathing = [prefs breathingSpeed];
     CGFloat draw = [prefs speed];
     [[MoodyGlowPersistentGlow sharedInstance] setBreathingSpeed:breathing];
     [[MoodyGlowPersistentGlow sharedInstance] setDrawSpeed:draw];
-    
-    NSString *firstBundle = bundleIDs.firstObject;
-    UIColor *color = nil;
-    if ([prefs colorMode] == MoodyGlowColorModeIcon) {
-        color = [MoodyGlowColorExtractor colorForBundleID:firstBundle];
-        if (!color) {
-            color = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
-        }
-    } else {
-        color = [prefs staticColor];
+
+    // ---- Build colors array ----
+    UIColor *fallback = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
+
+    // Static color mode: single color, no cycling
+    if ([prefs colorMode] == MoodyGlowColorModeStatic) {
+        UIColor *single = [prefs staticColor];
+        if (!single) single = fallback;
+        [[MoodyGlowPersistentGlow sharedInstance] showWithColors:@[single]
+                                                          style:[prefs selectedAnimationIndex]
+                                                       animated:YES];
+        return;
     }
-    
+
+    // Icon color mode
+    if (![prefs isColorCyclingEnabled] || bundleIDs.count == 1) {
+        // Cycling disabled OR only one app: single color (first bundle)
+        NSString *first = bundleIDs.firstObject;
+        UIColor *c = moodyGlowCachedColorForBundle(first);
+        if (!c) c = fallback;
+        [[MoodyGlowPersistentGlow sharedInstance] showWithColors:@[c]
+                                                          style:[prefs selectedAnimationIndex]
+                                                       animated:YES];
+        return;
+    }
+
+    // Cycling enabled with multiple apps: full array
+    NSMutableArray<UIColor *> *colors = [NSMutableArray arrayWithCapacity:bundleIDs.count];
+    for (NSString *bundleID in bundleIDs) {
+        UIColor *c = moodyGlowCachedColorForBundle(bundleID);
+        [colors addObject:c ? c : fallback];
+    }
+
     NSInteger style = [prefs selectedAnimationIndex];
-    BOOL locked = [MoodyGlowSystemState isDeviceLocked];
-    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, locked=%d, color=%@",
-          (long)count, (long)style, locked, color);
-    
-    [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color
-                                                      style:style
-                                                   animated:YES];
+    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, colors=%lu",
+          (long)count, (long)style, (unsigned long)colors.count);
+
+    [[MoodyGlowPersistentGlow sharedInstance] showWithColors:colors
+                                                       style:style
+                                                    animated:YES];
 }
 
 // --- iOS 14+ Group ---
@@ -122,11 +175,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 - (void)_setUILocked:(BOOL)locked {
     %orig;
-    
-    BOOL wasLocked = [MoodyGlowSystemState isDeviceLocked];
-    NSLog(@"[Moody Glow] _setUILocked called: locked=%d (wasLocked=%d)", locked, wasLocked);
-    
-    // If device just got UNLOCKED (locked == NO), stop glow immediately
+
     if (!locked) {
         NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
@@ -140,13 +189,15 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Lock Aware) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Color Cycling) ============");
     %init(iOS14Plus);
-    
+
+    moodyGlowInitColorCacheIfNeeded();
+
     [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
         moodyGlowRefreshPersistentGlow(count, bundleIDs);
     }];
-    
+
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Lock-aware handler registered.");
+    NSLog(@"[Moody Glow] Color-cycling handler registered.");
 }
