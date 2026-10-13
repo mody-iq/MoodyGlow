@@ -45,7 +45,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         color = [prefs staticColor];
     }
     
-    NSLog(@"[Moody Glow] Refreshing glow: count=%ld, apps=%lu, color=%@",
+    NSLog(@"[Moody Glow] Refresh glow: count=%ld, apps=%lu, color=%@",
           (long)count, (unsigned long)bundleIDs.count, color);
     
     [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color animated:YES];
@@ -122,7 +122,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Stage 2 - Persistent Glow) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Stage 2) ============");
     %init(iOS14Plus);
     
     // Register the change handler
@@ -130,7 +130,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         moodyGlowRefreshPersistentGlow(count, bundleIDs);
     }];
     
-    // Clean state
+    // Clean state on load
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     
     NSLog(@"[Moody Glow] Persistent glow handler registered.");
