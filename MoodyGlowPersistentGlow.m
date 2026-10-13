@@ -9,6 +9,8 @@
 static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
 
+static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
+
 static UIWindow *gPGWindow = nil;
 static CAShapeLayer *gPGLayer = nil;
 static CAShapeLayer *gPGSecondLayer = nil;
@@ -29,30 +31,76 @@ static CGFloat gPGDrawSpeed = 1.0;
     return shared;
 }
 
+#pragma mark - Debug Logging
+
+- (void)writePGLog:(NSString *)msg {
+    if (!msg) return;
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"HH:mm:ss";
+    NSString *entry = [NSString stringWithFormat:@"[%@] [PG] %@\n",
+                       [fmt stringFromDate:[NSDate date]], msg];
+    NSLog(@"[Moody Glow PG] %@", msg);
+    
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kPGLogPath];
+    if (!fh) {
+        [[NSFileManager defaultManager] createFileAtPath:kPGLogPath
+                                                contents:[entry dataUsingEncoding:NSUTF8StringEncoding]
+                                              attributes:nil];
+    } else {
+        [fh seekToEndOfFile];
+        [fh writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    }
+}
+
 #pragma mark - Window
 
-- (UIWindow *)getOrCreateWindow {
-    if (gPGWindow) return gPGWindow;
-    
-    UIWindowScene *targetScene = nil;
+- (UIWindowScene *)findBestScene {
+    UIWindowScene *bestScene = nil;
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            UIWindowScene *ws = (UIWindowScene *)scene;
-            if (ws.activationState == UISceneActivationStateForegroundActive) {
-                targetScene = ws;
-                break;
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        
+        // Prefer scene that has a key window
+        for (UIWindow *w in ws.windows) {
+            if (w.isKeyWindow) {
+                return ws;
             }
-            if (!targetScene) targetScene = ws;
+        }
+        if (!bestScene && ws.activationState == UISceneActivationStateForegroundActive) {
+            bestScene = ws;
         }
     }
+    if (bestScene) return bestScene;
+    // Fallback
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            return (UIWindowScene *)scene;
+        }
+    }
+    return nil;
+}
+
+- (UIWindow *)getOrCreateWindow {
+    UIWindowScene *targetScene = [self findBestScene];
     if (!targetScene) {
-        NSLog(@"[Moody Glow PG] No scene available.");
+        [self writePGLog:@"No scene available!"];
         return nil;
     }
     
+    // If cached window belongs to a different scene → destroy it
+    if (gPGWindow && gPGWindow.windowScene != targetScene) {
+        [self writePGLog:@"Scene changed - recreating window"];
+        gPGWindow.hidden = YES;
+        gPGWindow = nil;
+    }
+    
+    if (gPGWindow) return gPGWindow;
+    
     UIWindow *w = [[UIWindow alloc] initWithWindowScene:targetScene];
     w.frame = targetScene.coordinateSpace.bounds;
-    w.windowLevel = UIWindowLevelAlert + 1000;
+    // Very high level - above lock screen, alerts, everything
+    w.windowLevel = UIWindowLevelAlert + 100000;
     w.backgroundColor = [UIColor clearColor];
     w.userInteractionEnabled = NO;
     w.hidden = NO;
@@ -64,7 +112,8 @@ static CGFloat gPGDrawSpeed = 1.0;
     w.rootViewController = root;
     
     gPGWindow = w;
-    NSLog(@"[Moody Glow PG] Overlay window created.");
+    [self writePGLog:[NSString stringWithFormat:@"Overlay window created (level=%g)",
+                      w.windowLevel]];
     return w;
 }
 
@@ -257,12 +306,18 @@ static CGFloat gPGDrawSpeed = 1.0;
     
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindow *w = [self getOrCreateWindow];
-        if (!w) return;
+        if (!w) {
+            [self writePGLog:@"showWithColor: no window!"];
+            return;
+        }
         UIView *host = w.rootViewController.view;
-        if (!host) return;
+        if (!host) {
+            [self writePGLog:@"showWithColor: no host view!"];
+            return;
+        }
         
         if ((gPGLayer || gPGSecondLayer) && gPGStyle != style) {
-            NSLog(@"[Moody Glow PG] Style change (%ld -> %ld). Recreating.", (long)gPGStyle, (long)style);
+            [self writePGLog:[NSString stringWithFormat:@"Style change (%ld -> %ld)", (long)gPGStyle, (long)style]];
             [self teardownLayers];
         }
         
@@ -286,8 +341,8 @@ static CGFloat gPGDrawSpeed = 1.0;
             gPGStyle = style;
             gPGCurrentColor = color;
             gPGActive = YES;
-            NSLog(@"[Moody Glow PG] Glow STARTED. style=%ld color=%@ breathe=%.2f draw=%.2f",
-                  (long)style, color, gPGBreathingSpeed, gPGDrawSpeed);
+            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld color=%@ breathe=%.2f draw=%.2f",
+                              (long)style, color, gPGBreathingSpeed, gPGDrawSpeed]];
         } else {
             if (![gPGCurrentColor isEqual:color]) {
                 gPGCurrentColor = color;
@@ -313,8 +368,7 @@ static CGFloat gPGDrawSpeed = 1.0;
                     layer.strokeColor = color.CGColor;
                     layer.shadowColor = color.CGColor;
                 }
-                
-                NSLog(@"[Moody Glow PG] Color UPDATED to: %@", color);
+                [self writePGLog:[NSString stringWithFormat:@"Color UPDATED to %@", color]];
             }
         }
     });
@@ -354,15 +408,13 @@ static CGFloat gPGDrawSpeed = 1.0;
                 [layer removeFromSuperlayer];
             }
         }
-        
-        NSLog(@"[Moody Glow PG] Glow STOPPED.");
+        [self writePGLog:@"STOPPED"];
     });
 }
 
 - (void)setBreathingSpeed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     gPGBreathingSpeed = speed;
-    NSLog(@"[Moody Glow PG] Breathing speed = %.2f", speed);
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gPGLayer && gPGActive) {
@@ -379,7 +431,6 @@ static CGFloat gPGDrawSpeed = 1.0;
 - (void)setDrawSpeed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     gPGDrawSpeed = speed;
-    NSLog(@"[Moody Glow PG] Draw speed = %.2f", speed);
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gPGLayer && gPGActive) {
