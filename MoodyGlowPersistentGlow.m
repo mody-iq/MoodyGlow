@@ -345,15 +345,44 @@ static NSTimer *gPGColorTimer = nil;
 - (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
     if (style == kMoodyStyleSymmetric) {
         [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStyleLightBar) {
+        [self startLightBarAnimationOnLayer:layer speed:gPGDrawSpeed];
     } else {
         [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
     }
+}
+
+- (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_lightbar_start"];
+    [layer removeAnimationForKey:@"pg_lightbar_end"];
+
+    CFTimeInterval duration = 2.5 / speed;
+
+    CABasicAnimation *startAnim = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
+    startAnim.fromValue = @0.0;
+    startAnim.toValue = @1.0;
+    startAnim.duration = duration;
+    startAnim.repeatCount = HUGE_VALF;
+    startAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:startAnim forKey:@"pg_lightbar_start"];
+
+    CABasicAnimation *endAnim = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+    endAnim.fromValue = @0.15;
+    endAnim.toValue = @1.15;
+    endAnim.duration = duration;
+    endAnim.repeatCount = HUGE_VALF;
+    endAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:endAnim forKey:@"pg_lightbar_end"];
 }
 
 - (void)removeAllStyleAnimationsFromLayer:(CAShapeLayer *)layer {
     if (!layer) return;
     [layer removeAnimationForKey:@"pg_breathe"];
     [layer removeAnimationForKey:@"pg_symmetric"];
+    [layer removeAnimationForKey:@"pg_lightbar_start"];
+    [layer removeAnimationForKey:@"pg_lightbar_end"];
+}
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
@@ -456,6 +485,14 @@ static NSTimer *gPGColorTimer = nil;
 
         [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
         [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStyleLightBar) {
+        gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
+        gPGLayer.strokeStart = 0.0;
+        gPGLayer.strokeEnd = 0.15;
+        gPGLayer.opacity = 1.0;
+        gPGLayer.shadowRadius = 18.0;
+        [host addSublayer:gPGLayer];
+        [self startLightBarAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
     } else {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
