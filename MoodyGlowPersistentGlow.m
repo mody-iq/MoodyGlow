@@ -383,7 +383,6 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_lightbar_start"];
     [layer removeAnimationForKey:@"pg_lightbar_end"];
 }
-}
 
 #pragma mark - Color Cycling (Dramatic Transition)
 
