@@ -1,4 +1,4 @@
-// Moody Glow - Multi-Style Persistent Glow
+// Moody Glow - Multi-Style Persistent Glow + Speeds
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
 
@@ -26,9 +26,13 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
     
+    // ---- Apply speeds from prefs ----
     CGFloat breathing = [prefs breathingSpeed];
+    CGFloat draw = [prefs speed];
     [[MoodyGlowPersistentGlow sharedInstance] setBreathingSpeed:breathing];
+    [[MoodyGlowPersistentGlow sharedInstance] setDrawSpeed:draw];
     
+    // ---- Determine color ----
     NSString *firstBundle = bundleIDs.firstObject;
     UIColor *color = nil;
     if ([prefs colorMode] == MoodyGlowColorModeIcon) {
@@ -41,8 +45,8 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }
     
     NSInteger style = [prefs selectedAnimationIndex];
-    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, color=%@, breathing=%.2f",
-          (long)count, (long)style, color, breathing);
+    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, breathe=%.2f, draw=%.2f, color=%@",
+          (long)count, (long)style, breathing, draw, color);
     
     [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color
                                                       style:style
@@ -114,7 +118,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Multi-Style) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Multi-Style + Speeds) ============");
     %init(iOS14Plus);
     
     [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
@@ -122,5 +126,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
     
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Multi-style handler registered.");
+    NSLog(@"[Moody Glow] Handler registered (breathe + draw speeds).");
 }
