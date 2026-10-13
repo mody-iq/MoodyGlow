@@ -14,36 +14,32 @@ typedef NS_ENUM(NSInteger, MoodyGlowColorMode) {
 + (instancetype)sharedInstance;
 - (void)reload;
 
-// General
 - (BOOL)isEnabled;
 
-// Display
 - (BOOL)isLockscreenEnabled;
 - (BOOL)isUniversalEnabled;
 
-// Visibility
 - (BOOL)showInDND;
 - (BOOL)showInActiveApp;
 
-// Miscellaneous
 - (BOOL)isBlackoutEnabled;
 - (BOOL)wakeScreenAfterBlackout;
 
-// Animation
 - (NSInteger)selectedAnimationIndex;
 - (NSInteger)repeatCount;
 - (CGFloat)speed;
 - (CGFloat)breathingSpeed;
 
-// Color
+// NEW: glow thickness (line width) in pixels (1.0 - 12.0, default 6.0)
+- (CGFloat)glowThickness;
+
 - (MoodyGlowColorMode)colorMode;
 - (UIColor *)staticColor;
+
 - (BOOL)isColorCyclingEnabled;
 
-// Language
 - (NSInteger)languageMode;
 
-// Utility
 + (UIColor *)colorFromHexString:(NSString *)hex;
 
 @end
