@@ -12,6 +12,8 @@
 
 @implementation MoodyGlowNotificationTracker
 
+@synthesize changeHandler = _changeHandler;
+
 + (instancetype)sharedInstance {
     static MoodyGlowNotificationTracker *shared = nil;
     static dispatch_once_t onceToken;
@@ -74,7 +76,7 @@
 #pragma mark - Change Notification
 
 - (void)notifyChange {
-    void (^handler)(NSInteger, NSArray<NSString *> *) = self.changeHandler;
+    void (^handler)(NSInteger, NSArray<NSString *> *) = _changeHandler;
     if (!handler) return;
     NSInteger count = self.map.count;
     NSArray<NSString *> *apps = [self uniqueBundleIDs];
