@@ -99,6 +99,10 @@ static NSString * const kMoodyGlowPrefsDomain = @"com.moody.moodyglow";
     return [MoodyGlowPrefs colorFromHexString:hex];
 }
 
+- (BOOL)isColorCyclingEnabled {
+    return [self boolForKey:@"ColorCycling" defaultValue:YES];
+}
+
 - (NSInteger)languageMode {
     return [self integerForKey:@"Language" defaultValue:0];
 }
