@@ -4,9 +4,9 @@
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 
+static const NSInteger kMoodyStyleLightBar  = 1;
 static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
-
 static const NSTimeInterval kMoodyBannerDuration = 7.0;
 static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
 static const NSTimeInterval kMoodyDramaticDuration = 1.2;
