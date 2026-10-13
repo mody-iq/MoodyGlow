@@ -86,12 +86,11 @@
 - (NSDictionary *)arabicStrings {
     static NSDictionary *dict = nil;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceTokenند, ^{
+    dispatch_once(&onceToken, ^{
         dict = @{
-            @"GولENERAL": @"عام",
-",
+            @"GENERAL": @"عام",
             @"Enabled": @"مفعّل",
-            @"            @"PAnimations": @"الرسوم المتحركة",
+            @"Animations": @"الرسوم المتحركة",
             @"DISPLAY": @"العرض",
             @"Lockscreen": @"شاشة القفل",
             @"Universal": @"عالمي",
@@ -118,7 +117,8 @@
             @"Light Bar": @"شريط ضوئي",
             @"Outline": @"إطار",
             @"Particles": @"جزيئات",
-            @"Pendulum": @"بulse": @"نبض",
+            @"Pendulum": @"بندول",
+            @"Pulse": @"نبض",
             @"Symmetric": @"متناظر",
             @"ANIMATION CONTROLS": @"التحكم في الرسم",
             @"Repeat Count": @"عدد التكرارات",
@@ -133,12 +133,12 @@
             @"Color Cycling": @"تبديل الألوان",
             @"Color Cycling Footer": @"التنقل بين ألوان التطبيقات عندما يكون هناك إشعارات من تطبيقات متعددة",
             @"Test animation": @"تجربة الرسم"
-        ` };
+        };
     });
     return dict;
 }
 
-- (NSString *)localizeCOL:(NSString *)key {
+- (NSString *)localize:(NSString *)key {
     if (!key || key.length == 0) return @"";
     NSDictionary *dict = [self isArabic] ? [self arabicStrings] : [self englishStrings];
     NSString *value = dict[key];
