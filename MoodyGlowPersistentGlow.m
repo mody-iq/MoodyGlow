@@ -1,14 +1,19 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
-// Uses a dedicated overlay window that stays above everything
+// Supports: Outline (style 2), Symmetric (style 6)
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 
+// Style constants
+static const NSInteger kMoodyStyleOutline   = 2;
+static const NSInteger kMoodyStyleSymmetric = 6;
+
 static UIWindow *gPGWindow = nil;
-static CAShapeLayer *gPGLayer = nil;
-static UIBezierPath *gPGPath = nil;
+static CAShapeLayer *gPGLayer = nil;         // Primary layer (outline / symmetric-right)
+static CAShapeLayer *gPGSecondLayer = nil;   // Secondary layer (symmetric-left only)
 static UIColor *gPGCurrentColor = nil;
+static NSInteger gPGStyle = kMoodyStyleOutline;
 static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
 
@@ -62,7 +67,7 @@ static CGFloat gPGBreathingSpeed = 1.0;
     return w;
 }
 
-#pragma mark - Path
+#pragma mark - Paths
 
 - (UIBezierPath *)outlinePathForBounds:(CGRect)bounds {
     CGFloat w = bounds.size.width;
@@ -96,15 +101,112 @@ static CGFloat gPGBreathingSpeed = 1.0;
     return path;
 }
 
-#pragma mark - Breathing Animation
+- (UIBezierPath *)symmetricRightPathForBounds:(CGRect)bounds {
+    CGFloat w = bounds.size.width;
+    CGFloat h = bounds.size.height;
+    CGFloat cornerRadius = 39.0;
+    CGFloat notchWidth = 209.0;
+    CGFloat notchHeight = 30.0;
+    CGFloat notchCornerRadius = 15.0;
+    CGFloat notchLeft = (w - notchWidth) / 2.0;
+    CGFloat notchRight = notchLeft + notchWidth;
+    
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    // Start at bottom-right corner of the notch
+    [path moveToPoint:CGPointMake(notchRight, notchHeight)];
+    // Up the right side of the notch
+    [path addLineToPoint:CGPointMake(notchRight, notchCornerRadius)];
+    // Curve out of the notch onto the top edge
+    [path addQuadCurveToPoint:CGPointMake(notchRight + notchCornerRadius, 0)
+                 controlPoint:CGPointMake(notchRight, 0)];
+    // Across the top edge to the top-right corner
+    [path addLineToPoint:CGPointMake(w - cornerRadius, 0)];
+    // Around top-right corner
+    [path addQuadCurveToPoint:CGPointMake(w, cornerRadius) controlPoint:CGPointMake(w, 0)];
+    // Down the right side
+    [path addLineToPoint:CGPointMake(w, h - cornerRadius)];
+    // Around bottom-right corner
+    [path addQuadCurveToPoint:CGPointMake(w - cornerRadius, h) controlPoint:CGPointMake(w, h)];
+    // Along the bottom edge to bottom-center
+    [path addLineToPoint:CGPointMake(w / 2.0, h)];
+    return path;
+}
 
-- (void)startBreathingAnimation {
-    if (!gPGLayer) return;
+- (UIBezierPath *)symmetricLeftPathForBounds:(CGRect)bounds {
+    CGFloat w = bounds.size.width;
+    CGFloat h = bounds.size.height;
+    CGFloat cornerRadius = 39.0;
+    CGFloat notchWidth = 209.0;
+    CGFloat notchHeight = 30.0;
+    CGFloat notchCornerRadius = 15.0;
+    CGFloat notchLeft = (w - notchWidth) / 2.0;
     
-    CGFloat speed = gPGBreathingSpeed;
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    // Start at bottom-left corner of the notch
+    [path moveToPoint:CGPointMake(notchLeft, notchHeight)];
+    // Up the left side of the notch
+    [path addLineToPoint:CGPointMake(notchLeft, notchCornerRadius)];
+    // Curve out of the notch onto the top edge
+    [path addQuadCurveToPoint:CGPointMake(notchLeft - notchCornerRadius, 0)
+                 controlPoint:CGPointMake(notchLeft, 0)];
+    // Across the top edge to the top-left corner
+    [path addLineToPoint:CGPointMake(cornerRadius, 0)];
+    // Around top-left corner
+    [path addQuadCurveToPoint:CGPointMake(0, cornerRadius) controlPoint:CGPointMake(0, 0)];
+    // Down the left side
+    [path addLineToPoint:CGPointMake(0, h - cornerRadius)];
+    // Around bottom-left corner
+    [path addQuadCurveToPoint:CGPointMake(cornerRadius, h) controlPoint:CGPointMake(0, h)];
+    // Along the bottom edge to bottom-center
+    [path addLineToPoint:CGPointMake(w / 2.0, h)];
+    return path;
+}
+
+#pragma mark - Layer Creation
+
+- (CAShapeLayer *)createOutlineLayerWithColor:(UIColor *)color bounds:(CGRect)bounds {
+    UIBezierPath *path = [self outlinePathForBounds:bounds];
+    
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.path = path.CGPath;
+    layer.strokeColor = color.CGColor;
+    layer.fillColor = [UIColor clearColor].CGColor;
+    layer.lineWidth = 4.0;
+    layer.lineCap = kCALineCapRound;
+    layer.lineJoin = kCALineJoinRound;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 12.0;
+    layer.shadowOpacity = 1.0;
+    layer.shadowOffset = CGSizeZero;
+    layer.opacity = 0.4;
+    layer.zPosition = 9999;
+    return layer;
+}
+
+- (CAShapeLayer *)createSymmetricLayerWithPath:(UIBezierPath *)path
+                                         color:(UIColor *)color {
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.path = path.CGPath;
+    layer.strokeColor = color.CGColor;
+    layer.fillColor = [UIColor clearColor].CGColor;
+    layer.lineWidth = 4.0;
+    layer.lineCap = kCALineCapRound;
+    layer.lineJoin = kCALineJoinRound;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 12.0;
+    layer.shadowOpacity = 1.0;
+    layer.shadowOffset = CGSizeZero;
+    layer.strokeStart = 0.0;
+    layer.strokeEnd = 0.0;
+    layer.zPosition = 9999;
+    return layer;
+}
+
+#pragma mark - Animations
+
+- (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
-    
-    [gPGLayer removeAnimationForKey:@"pg_breathe"];
+    [layer removeAnimationForKey:@"pg_breathe"];
     
     CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
     breathe.fromValue = @0.4;
@@ -113,12 +215,61 @@ static CGFloat gPGBreathingSpeed = 1.0;
     breathe.autoreverses = YES;
     breathe.repeatCount = HUGE_VALF;
     breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [gPGLayer addAnimation:breathe forKey:@"pg_breathe"];
+    [layer addAnimation:breathe forKey:@"pg_breathe"];
+}
+
+- (void)startSymmetricAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_symmetric"];
+    
+    CFTimeInterval drawDuration = 1.2 / speed;
+    
+    CABasicAnimation *draw = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+    draw.fromValue = @0.0;
+    draw.toValue = @1.0;
+    draw.duration = drawDuration;
+    draw.autoreverses = YES;
+    draw.repeatCount = HUGE_VALF;
+    draw.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:draw forKey:@"pg_symmetric"];
+}
+
+- (void)startAnimationForStyle:(NSInteger)style
+                         layer:(CAShapeLayer *)layer
+                         speed:(CGFloat)speed {
+    if (style == kMoodyStyleSymmetric) {
+        [self startSymmetricAnimationOnLayer:layer speed:speed];
+    } else {
+        [self startBreathingAnimationOnLayer:layer speed:speed];
+    }
+}
+
+- (void)removeAllStyleAnimationsFromLayer:(CAShapeLayer *)layer {
+    if (!layer) return;
+    [layer removeAnimationForKey:@"pg_breathe"];
+    [layer removeAnimationForKey:@"pg_symmetric"];
+}
+
+#pragma mark - Teardown
+
+- (void)teardownLayers {
+    if (gPGLayer) {
+        [self removeAllStyleAnimationsFromLayer:gPGLayer];
+        [gPGLayer removeFromSuperlayer];
+        gPGLayer = nil;
+    }
+    if (gPGSecondLayer) {
+        [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
+        [gPGSecondLayer removeFromSuperlayer];
+        gPGSecondLayer = nil;
+    }
 }
 
 #pragma mark - Public API
 
-- (void)showWithColor:(UIColor *)color animated:(BOOL)animated {
+- (void)showWithColor:(UIColor *)color
+                style:(NSInteger)style
+             animated:(BOOL)animated {
     if (!color) return;
     
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -127,53 +278,62 @@ static CGFloat gPGBreathingSpeed = 1.0;
         UIView *host = w.rootViewController.view;
         if (!host) return;
         
-        if (!gPGPath) {
-            gPGPath = [self outlinePathForBounds:host.bounds];
+        // If style changed while active → tear down everything
+        if ((gPGLayer || gPGSecondLayer) && gPGStyle != style) {
+            NSLog(@"[Moody Glow PG] Style change (%ld -> %ld). Recreating.", (long)gPGStyle, (long)style);
+            [self teardownLayers];
         }
         
-        if (!gPGLayer) {
-            // ---- First time: create the layer ----
-            CAShapeLayer *layer = [CAShapeLayer layer];
-            layer.path = gPGPath.CGPath;
-            layer.strokeColor = color.CGColor;
-            layer.fillColor = [UIColor clearColor].CGColor;
-            layer.lineWidth = 4.0;
-            layer.lineCap = kCALineCapRound;
-            layer.lineJoin = kCALineJoinRound;
-            layer.shadowColor = color.CGColor;
-            layer.shadowRadius = 12.0;
-            layer.shadowOpacity = 1.0;
-            layer.shadowOffset = CGSizeZero;
-            layer.opacity = 0.4;
-            layer.zPosition = 9999;
-            [host.layer addSublayer:layer];
-            gPGLayer = layer;
+        if (!gPGLayer && !gPGSecondLayer) {
+            // ---- First time: create layers ----
+            if (style == kMoodyStyleSymmetric) {
+                UIBezierPath *rightPath = [self symmetricRightPathForBounds:host.bounds];
+                UIBezierPath *leftPath  = [self symmetricLeftPathForBounds:host.bounds];
+                gPGLayer       = [self createSymmetricLayerWithPath:rightPath color:color];
+                gPGSecondLayer = [self createSymmetricLayerWithPath:leftPath  color:color];
+                [host.layer addSublayer:gPGLayer];
+                [host.layer addSublayer:gPGSecondLayer];
+                
+                [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGBreathingSpeed];
+                [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGBreathingSpeed];
+            } else {
+                gPGLayer = [self createOutlineLayerWithColor:color bounds:host.bounds];
+                [host.layer addSublayer:gPGLayer];
+                [self startBreathingAnimationOnLayer:gPGLayer speed:gPGBreathingSpeed];
+            }
+            
+            gPGStyle = style;
             gPGCurrentColor = color;
-            
-            [self startBreathingAnimation];
-            
             gPGActive = YES;
-            NSLog(@"[Moody Glow PG] Glow STARTED with color: %@ (speed=%.2f)", color, gPGBreathingSpeed);
+            NSLog(@"[Moody Glow PG] Glow STARTED. style=%ld color=%@ speed=%.2f",
+                  (long)style, color, gPGBreathingSpeed);
         } else {
             // ---- Already active: update color if changed ----
             if (![gPGCurrentColor isEqual:color]) {
                 gPGCurrentColor = color;
                 
-                CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
-                colorAnim.fromValue = (id)gPGLayer.strokeColor;
-                colorAnim.toValue = (id)color.CGColor;
-                colorAnim.duration = 0.4;
-                colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-                [gPGLayer addAnimation:colorAnim forKey:@"pg_color"];
+                NSArray<CAShapeLayer *> *layers = @[];
+                if (gPGLayer) layers = [layers arrayByAddingObject:gPGLayer];
+                if (gPGSecondLayer) layers = [layers arrayByAddingObject:gPGSecondLayer];
                 
-                CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
-                shadowAnim.fromValue = (id)gPGLayer.shadowColor;
-                shadowAnim.toValue = (id)color.CGColor;
-                shadowAnim.duration = 0.4;
-                [gPGLayer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
+                for (CAShapeLayer *layer in layers) {
+                    CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
+                    colorAnim.fromValue = (id)layer.strokeColor;
+                    colorAnim.toValue = (id)color.CGColor;
+                    colorAnim.duration = 0.4;
+                    colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+                    [layer addAnimation:colorAnim forKey:@"pg_color"];
+                    
+                    CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
+                    shadowAnim.fromValue = (id)layer.shadowColor;
+                    shadowAnim.toValue = (id)color.CGColor;
+                    shadowAnim.duration = 0.4;
+                    [layer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
+                    
+                    layer.strokeColor = color.CGColor;
+                    layer.shadowColor = color.CGColor;
+                }
                 
-                gPGLayer.strokeColor = color.CGColor;
-                gPGLayer.shadowColor = color.CGColor;
                 NSLog(@"[Moody Glow PG] Color UPDATED to: %@", color);
             }
         }
@@ -182,34 +342,37 @@ static CGFloat gPGBreathingSpeed = 1.0;
 
 - (void)stopAnimated:(BOOL)animated {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!gPGLayer) {
+        if (!gPGLayer && !gPGSecondLayer) {
             gPGActive = NO;
             return;
         }
         
-        CAShapeLayer *layer = gPGLayer;
-        gPGLayer = nil;
-        gPGPath = nil;
+        NSMutableArray<CAShapeLayer *> *layers = [NSMutableArray array];
+        if (gPGLayer) { [layers addObject:gPGLayer]; gPGLayer = nil; }
+        if (gPGSecondLayer) { [layers addObject:gPGSecondLayer]; gPGSecondLayer = nil; }
         gPGCurrentColor = nil;
         gPGActive = NO;
         
-        [layer removeAnimationForKey:@"pg_breathe"];
-        [layer removeAnimationForKey:@"pg_color"];
-        [layer removeAnimationForKey:@"pg_shadow_color"];
-        
-        if (animated) {
-            CABasicAnimation *fadeOut = [CABasicAnimation animationWithKeyPath:@"opacity"];
-            fadeOut.fromValue = @(layer.opacity);
-            fadeOut.toValue = @0.0;
-            fadeOut.duration = 0.35;
-            [layer addAnimation:fadeOut forKey:@"pg_fadeout"];
-            layer.opacity = 0.0;
+        for (CAShapeLayer *layer in layers) {
+            [self removeAllStyleAnimationsFromLayer:layer];
+            [layer removeAnimationForKey:@"pg_color"];
+            [layer removeAnimationForKey:@"pg_shadow_color"];
             
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (animated) {
+                CABasicAnimation *fadeOut = [CABasicAnimation animationWithKeyPath:@"opacity"];
+                fadeOut.fromValue = @(layer.opacity);
+                fadeOut.toValue = @0.0;
+                fadeOut.duration = 0.35;
+                [layer addAnimation:fadeOut forKey:@"pg_fadeout"];
+                layer.opacity = 0.0;
+                
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    [layer removeFromSuperlayer];
+                });
+            } else {
                 [layer removeFromSuperlayer];
-            });
-        } else {
-            [layer removeFromSuperlayer];
+            }
         }
         
         NSLog(@"[Moody Glow PG] Glow STOPPED.");
@@ -219,11 +382,16 @@ static CGFloat gPGBreathingSpeed = 1.0;
 - (void)setBreathingSpeed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     gPGBreathingSpeed = speed;
-    NSLog(@"[Moody Glow PG] Breathing speed set to %.2f", speed);
+    NSLog(@"[Moody Glow PG] Speed set to %.2f", speed);
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gPGLayer && gPGActive) {
-            [self startBreathingAnimation];
+            [self removeAllStyleAnimationsFromLayer:gPGLayer];
+            [self startAnimationForStyle:gPGStyle layer:gPGLayer speed:speed];
+        }
+        if (gPGSecondLayer && gPGActive) {
+            [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
+            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer speed:speed];
         }
     });
 }
