@@ -1,7 +1,6 @@
-// Moody Glow - Stage 2: Persistent Glow
+// Moody Glow - Stage 2: Persistent Glow + Breathing Speed
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Glow that stays on screen as long as notifications exist
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -31,7 +30,11 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
     
-    // Determine the color of the first app (Stage 2: single color only)
+    // ---- Apply breathing speed from prefs ----
+    CGFloat breathing = [prefs breathingSpeed];
+    [[MoodyGlowPersistentGlow sharedInstance] setBreathingSpeed:breathing];
+    
+    // Determine the color of the first app
     NSString *firstBundle = bundleIDs.firstObject;
     UIColor *color = nil;
     
@@ -45,8 +48,8 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         color = [prefs staticColor];
     }
     
-    NSLog(@"[Moody Glow] Refresh glow: count=%ld, apps=%lu, color=%@",
-          (long)count, (unsigned long)bundleIDs.count, color);
+    NSLog(@"[Moody Glow] Refresh glow: count=%ld, apps=%lu, breathing=%.2f, color=%@",
+          (long)count, (unsigned long)bundleIDs.count, breathing, color);
     
     [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color animated:YES];
 }
@@ -122,7 +125,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Stage 2) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Stage 2 + Breathing Speed) ============");
     %init(iOS14Plus);
     
     // Register the change handler
@@ -133,5 +136,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     // Clean state on load
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     
-    NSLog(@"[Moody Glow] Persistent glow handler registered.");
+    NSLog(@"[Moody Glow] Persistent glow handler with breathing speed registered.");
 }
