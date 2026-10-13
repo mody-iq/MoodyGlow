@@ -82,6 +82,10 @@ static NSString * const kMoodyGlowPrefsDomain = @"com.moody.moodyglow";
     return [self floatForKey:@"Speed" defaultValue:1.0];
 }
 
+- (CGFloat)breathingSpeed {
+    return [self floatForKey:@"BreathingSpeed" defaultValue:1.0];
+}
+
 - (MoodyGlowColorMode)colorMode {
     return (MoodyGlowColorMode)[self integerForKey:@"ColorMode" defaultValue:0];
 }
