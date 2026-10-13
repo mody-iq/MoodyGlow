@@ -17,6 +17,10 @@
 // Stop and hide the glow.
 - (void)stopAnimated:(BOOL)animated;
 
+// Update breathing speed (0.5x = slow, 2.0x = fast).
+// If the glow is currently active, the animation restarts immediately.
+- (void)setBreathingSpeed:(CGFloat)speed;
+
 // YES if the glow is currently visible.
 - (BOOL)isActive;
 
