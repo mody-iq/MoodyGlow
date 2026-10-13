@@ -1,10 +1,11 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
 // Supports: Outline (style 2), Symmetric (style 6)
-// Host strategy: SBCoverSheetWindow while it is visible (lock screen),
-// own overlay window otherwise. A watch timer switches host automatically.
-// When the device is unlocked (overlay host) the glow auto-stops after the
-// system banner duration (7s); every new show call resets that timer.
+// Features:
+//   - Host switching: SBCoverSheetWindow (locked) <-> own overlay (unlocked)
+//   - Banner timer: unlocked glow stops 7s after last notification
+//   - Color cycling: cycles through colors every 3s with cross-fade
+//   - List change detection: list changed -> restart from color 0
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
@@ -13,6 +14,8 @@ static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
 
 static const NSTimeInterval kMoodyBannerDuration = 7.0;
+static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
+static const NSTimeInterval kMoodyCrossfadeDuration = 0.4;
 
 static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
 
@@ -20,13 +23,15 @@ static UIWindow *gPGWindow = nil;
 static __weak CALayer *gPGHostLayer = nil;
 static CAShapeLayer *gPGLayer = nil;
 static CAShapeLayer *gPGSecondLayer = nil;
-static UIColor *gPGCurrentColor = nil;
+static NSArray<UIColor *> *gPGColors = nil;
+static NSInteger gPGColorIndex = 0;
 static NSInteger gPGStyle = kMoodyStyleOutline;
 static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
 static CGFloat gPGDrawSpeed = 1.0;
 static NSTimer *gPGWatchTimer = nil;
 static NSTimer *gPGBannerTimer = nil;
+static NSTimer *gPGColorTimer = nil;
 
 @implementation MoodyGlowPersistentGlow
 
@@ -63,7 +68,6 @@ static NSTimer *gPGBannerTimer = nil;
 
 #pragma mark - Scene / Window Discovery
 
-// The lock screen window (visible only while the cover sheet is showing)
 - (UIWindow *)visibleCoverSheetWindow {
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
@@ -97,7 +101,6 @@ static NSTimer *gPGBannerTimer = nil;
 - (UIWindowScene *)findBestScene {
     UIWindowScene *fallback = nil;
 
-    // Priority 1: scene with key window
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
@@ -107,14 +110,12 @@ static NSTimer *gPGBannerTimer = nil;
         }
     }
 
-    // Priority 2: foreground active scene
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
         if (ws.activationState == UISceneActivationStateForegroundActive) return ws;
     }
 
-    // Priority 3: any scene
     return fallback;
 }
 
@@ -170,8 +171,6 @@ static NSTimer *gPGBannerTimer = nil;
 
 #pragma mark - Host Resolution
 
-// Returns the layer our glow layers must be attached to.
-// CoverSheet while the lock screen is visible, otherwise our own overlay.
 - (CALayer *)resolveHostLayerBounds:(CGRect *)outBounds source:(NSString **)outSource {
     UIWindow *cover = [self visibleCoverSheetWindow];
     if (cover) {
@@ -362,6 +361,72 @@ static NSTimer *gPGBannerTimer = nil;
     [layer removeAnimationForKey:@"pg_symmetric"];
 }
 
+#pragma mark - Color Cycling
+
+- (void)applyColor:(UIColor *)color animated:(BOOL)animated {
+    NSArray<CAShapeLayer *> *layers = @[];
+    if (gPGLayer) layers = [layers arrayByAddingObject:gPGLayer];
+    if (gPGSecondLayer) layers = [layers arrayByAddingObject:gPGSecondLayer];
+
+    for (CAShapeLayer *layer in layers) {
+        if (animated) {
+            CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
+            colorAnim.fromValue = (id)layer.strokeColor;
+            colorAnim.toValue = (id)color.CGColor;
+            colorAnim.duration = kMoodyCrossfadeDuration;
+            colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:colorAnim forKey:@"pg_color"];
+
+            CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
+            shadowAnim.fromValue = (id)layer.shadowColor;
+            shadowAnim.toValue = (id)color.CGColor;
+            shadowAnim.duration = kMoodyCrossfadeDuration;
+            [layer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
+        }
+        layer.strokeColor = color.CGColor;
+        layer.shadowColor = color.CGColor;
+    }
+}
+
+- (void)applyColorAtIndex:(NSInteger)index animated:(BOOL)animated {
+    if (!gPGColors || gPGColors.count == 0) return;
+    if (index < 0 || index >= (NSInteger)gPGColors.count) index = 0;
+    UIColor *color = gPGColors[index];
+    [self applyColor:color animated:animated];
+    [self writePGLog:[NSString stringWithFormat:@"Color cycle -> %ld/%lu color=%@",
+                      (long)(index + 1), (unsigned long)gPGColors.count, color]];
+}
+
+- (void)cancelColorTimer {
+    if (gPGColorTimer) {
+        [gPGColorTimer invalidate];
+        gPGColorTimer = nil;
+    }
+}
+
+- (void)restartColorTimer {
+    [self cancelColorTimer];
+    if (!gPGColors || gPGColors.count <= 1) {
+        return;
+    }
+    NSTimer *t = [NSTimer timerWithTimeInterval:kMoodyColorCycleInterval
+                                         target:self
+                                       selector:@selector(colorTimerFired)
+                                       userInfo:nil
+                                        repeats:YES];
+    [[NSRunLoop mainRunLoop] addTimer:t forMode:NSRunLoopCommonModes];
+    gPGColorTimer = t;
+}
+
+- (void)colorTimerFired {
+    if (!gPGActive || !gPGColors || gPGColors.count <= 1) {
+        [self cancelColorTimer];
+        return;
+    }
+    gPGColorIndex = (gPGColorIndex + 1) % gPGColors.count;
+    [self applyColorAtIndex:gPGColorIndex animated:YES];
+}
+
 #pragma mark - Build / Teardown
 
 - (void)buildLayersOnHost:(CALayer *)host
@@ -400,7 +465,7 @@ static NSTimer *gPGBannerTimer = nil;
     gPGHostLayer = nil;
 }
 
-#pragma mark - Banner Timer (unlocked device: glow lives as long as the system banner)
+#pragma mark - Banner Timer
 
 - (void)cancelBannerTimer {
     if (gPGBannerTimer) {
@@ -426,7 +491,6 @@ static NSTimer *gPGBannerTimer = nil;
     [self stopAnimated:YES];
 }
 
-// Lock screen: glow stays until the tracker stops it. Unlocked: 7s banner timer.
 - (void)applyTimerPolicyForSource:(NSString *)source {
     if ([source isEqualToString:@"Overlay"]) {
         [self restartBannerTimer];
@@ -435,7 +499,7 @@ static NSTimer *gPGBannerTimer = nil;
     }
 }
 
-#pragma mark - Watch Timer (switches host between lock screen and unlocked)
+#pragma mark - Watch Timer
 
 - (void)startWatchTimer {
     if (gPGWatchTimer) return;
@@ -456,7 +520,7 @@ static NSTimer *gPGBannerTimer = nil;
 }
 
 - (void)watchTick {
-    if (!gPGActive || !gPGCurrentColor) {
+    if (!gPGActive || !gPGColors || gPGColors.count == 0) {
         [self stopWatchTimer];
         return;
     }
@@ -470,10 +534,10 @@ static NSTimer *gPGBannerTimer = nil;
                     (gPGSecondLayer && gPGSecondLayer.superlayer != host);
 
     if (host != gPGHostLayer || detached) {
-        UIColor *color = gPGCurrentColor;
+        UIColor *current = gPGColors[gPGColorIndex];
         NSInteger style = gPGStyle;
         [self teardownLayers];
-        [self buildLayersOnHost:host bounds:bounds color:color style:style];
+        [self buildLayersOnHost:host bounds:bounds color:current style:style];
         [self writePGLog:[NSString stringWithFormat:@"Host switched -> %@ bounds=%@",
                           source, NSStringFromCGRect(bounds)]];
         [self applyTimerPolicyForSource:source];
@@ -482,17 +546,38 @@ static NSTimer *gPGBannerTimer = nil;
 
 #pragma mark - Public API
 
-- (void)showWithColor:(UIColor *)color
-                style:(NSInteger)style
-             animated:(BOOL)animated {
-    if (!color) return;
+- (void)showWithColors:(NSArray<UIColor *> *)colors
+                 style:(NSInteger)style
+              animated:(BOOL)animated {
+    if (!colors || colors.count == 0) {
+        [self stopAnimated:YES];
+        return;
+    }
 
     dispatch_async(dispatch_get_main_queue(), ^{
+        BOOL listChanged = YES;
+        if (gPGColors && gPGColors.count == colors.count) {
+            listChanged = NO;
+            for (NSUInteger i = 0; i < colors.count; i++) {
+                if (![gPGColors[i] isEqual:colors[i]]) {
+                    listChanged = YES;
+                    break;
+                }
+            }
+        }
+
+        if (listChanged) {
+            gPGColors = [colors copy];
+            gPGColorIndex = 0;
+            [self writePGLog:[NSString stringWithFormat:@"Color list changed (%lu colors) - reset to 0",
+                              (unsigned long)colors.count]];
+        }
+
         CGRect bounds = CGRectZero;
         NSString *source = nil;
         CALayer *host = [self resolveHostLayerBounds:&bounds source:&source];
         if (!host) {
-            [self writePGLog:@"showWithColor: no host layer!"];
+            [self writePGLog:@"showWithColors: no host layer!"];
             return;
         }
 
@@ -500,71 +585,63 @@ static NSTimer *gPGBannerTimer = nil;
         BOOL styleChanged = ((gPGLayer || gPGSecondLayer) && gPGStyle != style);
 
         if (hostChanged || styleChanged) {
-            [self writePGLog:[NSString stringWithFormat:@"Recreating (hostChanged=%d styleChanged=%d)",
-                              hostChanged, styleChanged]];
             [self teardownLayers];
         }
 
         if (!gPGLayer && !gPGSecondLayer) {
-            [self buildLayersOnHost:host bounds:bounds color:color style:style];
+            UIColor *initial = gPGColors[gPGColorIndex];
+            [self buildLayersOnHost:host bounds:bounds color:initial style:style];
             gPGStyle = style;
-            gPGCurrentColor = color;
             gPGActive = YES;
-            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld host=%@ bounds=%@ color=%@",
-                              (long)style, source, NSStringFromCGRect(bounds), color]];
+            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld host=%@ bounds=%@ colors=%lu",
+                              (long)style, source, NSStringFromCGRect(bounds),
+                              (unsigned long)gPGColors.count]];
         } else {
-            if (![gPGCurrentColor isEqual:color]) {
-                gPGCurrentColor = color;
-
-                NSArray<CAShapeLayer *> *layers = @[];
-                if (gPGLayer) layers = [layers arrayByAddingObject:gPGLayer];
-                if (gPGSecondLayer) layers = [layers arrayByAddingObject:gPGSecondLayer];
-
-                for (CAShapeLayer *layer in layers) {
-                    CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
-                    colorAnim.fromValue = (id)layer.strokeColor;
-                    colorAnim.toValue = (id)color.CGColor;
-                    colorAnim.duration = 0.4;
-                    colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-                    [layer addAnimation:colorAnim forKey:@"pg_color"];
-
-                    CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
-                    shadowAnim.fromValue = (id)layer.shadowColor;
-                    shadowAnim.toValue = (id)color.CGColor;
-                    shadowAnim.duration = 0.4;
-                    [layer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
-
-                    layer.strokeColor = color.CGColor;
-                    layer.shadowColor = color.CGColor;
-                }
-                [self writePGLog:[NSString stringWithFormat:@"Color UPDATED to %@", color]];
-            }
+            [self applyColorAtIndex:gPGColorIndex animated:YES];
         }
 
-        // Every show call (new notification) restarts the 7s banner timer when unlocked
         [self applyTimerPolicyForSource:source];
         if ([source isEqualToString:@"Overlay"]) {
             [self writePGLog:@"Banner timer (re)started: 7s"];
+        }
+
+        if (listChanged || !gPGColorTimer) {
+            [self restartColorTimer];
         }
 
         [self startWatchTimer];
     });
 }
 
+// Backward-compatible API (single color)
+- (void)showWithColor:(UIColor *)color
+                style:(NSInteger)style
+             animated:(BOOL)animated {
+    if (!color) {
+        [self stopAnimated:animated];
+        return;
+    }
+    [self showWithColors:@[color] style:style animated:animated];
+}
+
 - (void)stopAnimated:(BOOL)animated {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self stopWatchTimer];
         [self cancelBannerTimer];
+        [self cancelColorTimer];
 
         if (!gPGLayer && !gPGSecondLayer) {
             gPGActive = NO;
+            gPGColors = nil;
+            gPGColorIndex = 0;
             return;
         }
 
         NSMutableArray<CAShapeLayer *> *layers = [NSMutableArray array];
         if (gPGLayer) { [layers addObject:gPGLayer]; gPGLayer = nil; }
         if (gPGSecondLayer) { [layers addObject:gPGSecondLayer]; gPGSecondLayer = nil; }
-        gPGCurrentColor = nil;
+        gPGColors = nil;
+        gPGColorIndex = 0;
         gPGHostLayer = nil;
         gPGActive = NO;
 
