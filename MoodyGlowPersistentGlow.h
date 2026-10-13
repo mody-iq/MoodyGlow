@@ -19,8 +19,11 @@
 // Stop and hide the glow.
 - (void)stopAnimated:(BOOL)animated;
 
-// Update speed (0.5x = slow, 2.0x = fast).
+// Breathing pulse speed (used by Outline style). Default: 1.0
 - (void)setBreathingSpeed:(CGFloat)speed;
+
+// Drawing animation speed (used by Symmetric and future styles). Default: 1.0
+- (void)setDrawSpeed:(CGFloat)speed;
 
 // YES if the glow is currently visible.
 - (BOOL)isActive;
