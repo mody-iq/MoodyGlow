@@ -1,6 +1,8 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
 // Supports: Outline (style 2), Symmetric (style 6)
+// Host strategy: SBCoverSheetWindow while it is visible (lock screen),
+// own overlay window otherwise. A watch timer switches host automatically.
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
@@ -11,6 +13,7 @@ static const NSInteger kMoodyStyleSymmetric = 6;
 static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
 
 static UIWindow *gPGWindow = nil;
+static __weak CALayer *gPGHostLayer = nil;
 static CAShapeLayer *gPGLayer = nil;
 static CAShapeLayer *gPGSecondLayer = nil;
 static UIColor *gPGCurrentColor = nil;
@@ -18,6 +21,7 @@ static NSInteger gPGStyle = kMoodyStyleOutline;
 static BOOL gPGActive = NO;
 static CGFloat gPGBreathingSpeed = 1.0;
 static CGFloat gPGDrawSpeed = 1.0;
+static NSTimer *gPGWatchTimer = nil;
 
 @implementation MoodyGlowPersistentGlow
 
@@ -39,7 +43,7 @@ static CGFloat gPGDrawSpeed = 1.0;
     NSString *entry = [NSString stringWithFormat:@"[%@] [PG] %@\n",
                        [fmt stringFromDate:[NSDate date]], msg];
     NSLog(@"[Moody Glow PG] %@", msg);
-    
+
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kPGLogPath];
     if (!fh) {
         [[NSFileManager defaultManager] createFileAtPath:kPGLogPath
@@ -52,30 +56,23 @@ static CGFloat gPGDrawSpeed = 1.0;
     }
 }
 
-#pragma mark - Scene Discovery
+#pragma mark - Scene / Window Discovery
 
-// Find the SBLockScreenWindow and return its scene.
-// This is the most reliable way to place our overlay above the lock screen.
-- (UIWindowScene *)lockScreenSceneViaWindow {
-    Class lockWinCls = NSClassFromString(@"SBLockScreenWindow");
-    
-    // Iterate ALL windows in ALL scenes
+// The lock screen window (visible only while the cover sheet is showing)
+- (UIWindow *)visibleCoverSheetWindow {
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
         for (UIWindow *w in ws.windows) {
-            if (lockWinCls && [w isKindOfClass:lockWinCls]) {
-                [self writePGLog:[NSString stringWithFormat:
-                                  @"Found SBLockScreenWindow in scene (level=%g, state=%ld)",
-                                  w.windowLevel, (long)ws.activationState]];
-                return ws;
+            if ([NSStringFromClass([w class]) isEqualToString:@"SBCoverSheetWindow"] &&
+                !w.hidden && w.alpha > 0.01) {
+                return w;
             }
         }
     }
     return nil;
 }
 
-// Dump ALL windows and their levels to help debugging
 - (void)dumpAllWindows {
     NSMutableString *s = [NSMutableString string];
     [s appendString:@"--- Windows dump ---\n"];
@@ -93,86 +90,106 @@ static CGFloat gPGDrawSpeed = 1.0;
 }
 
 - (UIWindowScene *)findBestScene {
-    // Priority 1: Scene that contains SBLockScreenWindow
-    UIWindowScene *lockScene = [self lockScreenSceneViaWindow];
-    if (lockScene) {
-        [self writePGLog:@"Using LOCK SCREEN scene (via SBLockScreenWindow)"];
-        return lockScene;
-    }
-    
-    // Priority 2: Scene with key window
+    UIWindowScene *fallback = nil;
+
+    // Priority 1: scene with key window
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
+        if (!fallback) fallback = ws;
         for (UIWindow *w in ws.windows) {
-            if (w.isKeyWindow) {
-                [self writePGLog:@"Using scene with key window"];
-                return ws;
-            }
+            if (w.isKeyWindow) return ws;
         }
     }
-    
-    // Priority 3: Foreground active scene
+
+    // Priority 2: foreground active scene
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]]) continue;
         UIWindowScene *ws = (UIWindowScene *)scene;
-        if (ws.activationState == UISceneActivationStateForegroundActive) {
-            [self writePGLog:@"Using foreground active scene"];
-            return ws;
-        }
+        if (ws.activationState == UISceneActivationStateForegroundActive) return ws;
     }
-    
-    // Priority 4: Any scene
-    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
-        if ([scene isKindOfClass:[UIWindowScene class]]) {
-            [self writePGLog:@"Using any available scene"];
-            return (UIWindowScene *)scene;
-        }
-    }
-    
-    return nil;
+
+    // Priority 3: any scene
+    return fallback;
 }
 
-#pragma mark - Window
+#pragma mark - Overlay Window
 
-- (UIWindow *)getOrCreateWindow {
+- (void)destroyOverlayWindow {
+    [self teardownLayers];
+    if (gPGWindow) {
+        gPGWindow.hidden = YES;
+        gPGWindow = nil;
+    }
+}
+
+- (UIWindow *)getOrCreateOverlayWindow {
     UIWindowScene *targetScene = [self findBestScene];
     if (!targetScene) {
         [self writePGLog:@"No scene available!"];
         return nil;
     }
-    
-    // If cached window belongs to a different scene → destroy it
-    if (gPGWindow && gPGWindow.windowScene != targetScene) {
-        [self writePGLog:@"Scene changed - recreating window"];
-        gPGWindow.hidden = YES;
-        gPGWindow = nil;
+
+    if (gPGWindow && (gPGWindow.windowScene != targetScene || !gPGWindow.rootViewController)) {
+        [self writePGLog:@"Overlay invalid or scene changed - recreating"];
+        [self destroyOverlayWindow];
     }
-    
-    if (gPGWindow) return gPGWindow;
-    
+
+    if (gPGWindow) {
+        gPGWindow.windowLevel = 200000;
+        gPGWindow.hidden = NO;
+        return gPGWindow;
+    }
+
     UIWindow *w = [[UIWindow alloc] initWithWindowScene:targetScene];
-    w.frame = targetScene.coordinateSpace.bounds;
-    // Use the absolute maximum level so we sit above everything
-    w.windowLevel = CGFLOAT_MAX;
+    CGRect frame = targetScene.coordinateSpace.bounds;
+    if (CGRectIsEmpty(frame)) frame = [UIScreen mainScreen].bounds;
+    w.frame = frame;
+    w.windowLevel = 200000;
     w.backgroundColor = [UIColor clearColor];
     w.userInteractionEnabled = NO;
-    w.hidden = NO;
-    
+
     UIViewController *root = [[UIViewController alloc] init];
     root.view.backgroundColor = [UIColor clearColor];
     root.view.userInteractionEnabled = NO;
     root.view.frame = w.bounds;
     w.rootViewController = root;
-    
+    w.hidden = NO;
+
     gPGWindow = w;
-    [self writePGLog:[NSString stringWithFormat:@"Window created (level=%g, scene=%p)",
-                      w.windowLevel, targetScene]];
-    
-    // Dump all windows for debugging
+    [self writePGLog:[NSString stringWithFormat:@"Overlay window created (level=%g, frame=%@)",
+                      w.windowLevel, NSStringFromCGRect(frame)]];
     [self dumpAllWindows];
-    
     return w;
+}
+
+#pragma mark - Host Resolution
+
+// Returns the layer our glow layers must be attached to.
+// CoverSheet while the lock screen is visible, otherwise our own overlay.
+- (CALayer *)resolveHostLayerBounds:(CGRect *)outBounds source:(NSString **)outSource {
+    UIWindow *cover = [self visibleCoverSheetWindow];
+    if (cover) {
+        CGRect b = cover.bounds;
+        if (CGRectIsEmpty(b)) b = [UIScreen mainScreen].bounds;
+        if (outBounds) *outBounds = CGRectMake(0, 0, b.size.width, b.size.height);
+        if (outSource) *outSource = @"CoverSheet";
+        return cover.layer;
+    }
+
+    UIWindow *w = [self getOrCreateOverlayWindow];
+    if (!w) return nil;
+    UIView *host = w.rootViewController.view;
+    if (!host) return nil;
+
+    CGRect hostFrame = w.bounds;
+    if (CGRectIsEmpty(hostFrame)) hostFrame = [UIScreen mainScreen].bounds;
+    host.frame = hostFrame;
+    [host layoutIfNeeded];
+
+    if (outBounds) *outBounds = CGRectMake(0, 0, hostFrame.size.width, hostFrame.size.height);
+    if (outSource) *outSource = @"Overlay";
+    return host.layer;
 }
 
 #pragma mark - Paths
@@ -186,7 +203,7 @@ static CGFloat gPGDrawSpeed = 1.0;
     CGFloat notchCornerRadius = 15.0;
     CGFloat notchLeft = (w - notchWidth) / 2.0;
     CGFloat notchRight = notchLeft + notchWidth;
-    
+
     UIBezierPath *path = [UIBezierPath bezierPath];
     [path moveToPoint:CGPointMake(cornerRadius, 0)];
     [path addLineToPoint:CGPointMake(notchLeft - notchCornerRadius, 0)];
@@ -212,298 +229,4 @@ static CGFloat gPGDrawSpeed = 1.0;
 - (UIBezierPath *)symmetricRightPathForBounds:(CGRect)bounds {
     CGFloat w = bounds.size.width;
     CGFloat h = bounds.size.height;
-    CGFloat cornerRadius = 39.0;
-    CGFloat notchWidth = 209.0;
-    CGFloat notchHeight = 30.0;
-    CGFloat notchCornerRadius = 15.0;
-    CGFloat notchLeft = (w - notchWidth) / 2.0;
-    CGFloat notchRight = notchLeft + notchWidth;
-    
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(notchRight, notchHeight)];
-    [path addLineToPoint:CGPointMake(notchRight, notchCornerRadius)];
-    [path addQuadCurveToPoint:CGPointMake(notchRight + notchCornerRadius, 0)
-                 controlPoint:CGPointMake(notchRight, 0)];
-    [path addLineToPoint:CGPointMake(w - cornerRadius, 0)];
-    [path addQuadCurveToPoint:CGPointMake(w, cornerRadius) controlPoint:CGPointMake(w, 0)];
-    [path addLineToPoint:CGPointMake(w, h - cornerRadius)];
-    [path addQuadCurveToPoint:CGPointMake(w - cornerRadius, h) controlPoint:CGPointMake(w, h)];
-    [path addLineToPoint:CGPointMake(w / 2.0, h)];
-    return path;
-}
-
-- (UIBezierPath *)symmetricLeftPathForBounds:(CGRect)bounds {
-    CGFloat w = bounds.size.width;
-    CGFloat h = bounds.size.height;
-    CGFloat cornerRadius = 39.0;
-    CGFloat notchWidth = 209.0;
-    CGFloat notchHeight = 30.0;
-    CGFloat notchCornerRadius = 15.0;
-    CGFloat notchLeft = (w - notchWidth) / 2.0;
-    
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:CGPointMake(notchLeft, notchHeight)];
-    [path addLineToPoint:CGPointMake(notchLeft, notchCornerRadius)];
-    [path addQuadCurveToPoint:CGPointMake(notchLeft - notchCornerRadius, 0)
-                 controlPoint:CGPointMake(notchLeft, 0)];
-    [path addLineToPoint:CGPointMake(cornerRadius, 0)];
-    [path addQuadCurveToPoint:CGPointMake(0, cornerRadius) controlPoint:CGPointMake(0, 0)];
-    [path addLineToPoint:CGPointMake(0, h - cornerRadius)];
-    [path addQuadCurveToPoint:CGPointMake(cornerRadius, h) controlPoint:CGPointMake(0, h)];
-    [path addLineToPoint:CGPointMake(w / 2.0, h)];
-    return path;
-}
-
-#pragma mark - Layer Creation
-
-- (CAShapeLayer *)createOutlineLayerWithColor:(UIColor *)color bounds:(CGRect)bounds {
-    UIBezierPath *path = [self outlinePathForBounds:bounds];
-    
-    CAShapeLayer *layer = [CAShapeLayer layer];
-    layer.path = path.CGPath;
-    layer.strokeColor = color.CGColor;
-    layer.fillColor = [UIColor clearColor].CGColor;
-    layer.lineWidth = 4.0;
-    layer.lineCap = kCALineCapRound;
-    layer.lineJoin = kCALineJoinRound;
-    layer.shadowColor = color.CGColor;
-    layer.shadowRadius = 12.0;
-    layer.shadowOpacity = 1.0;
-    layer.shadowOffset = CGSizeZero;
-    layer.opacity = 0.4;
-    layer.zPosition = 9999;
-    return layer;
-}
-
-- (CAShapeLayer *)createSymmetricLayerWithPath:(UIBezierPath *)path
-                                         color:(UIColor *)color {
-    CAShapeLayer *layer = [CAShapeLayer layer];
-    layer.path = path.CGPath;
-    layer.strokeColor = color.CGColor;
-    layer.fillColor = [UIColor clearColor].CGColor;
-    layer.lineWidth = 4.0;
-    layer.lineCap = kCALineCapRound;
-    layer.lineJoin = kCALineJoinRound;
-    layer.shadowColor = color.CGColor;
-    layer.shadowRadius = 12.0;
-    layer.shadowOpacity = 1.0;
-    layer.shadowOffset = CGSizeZero;
-    layer.strokeStart = 0.0;
-    layer.strokeEnd = 0.0;
-    layer.zPosition = 9999;
-    return layer;
-}
-
-#pragma mark - Animations
-
-- (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_breathe"];
-    
-    CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    breathe.fromValue = @0.4;
-    breathe.toValue = @1.0;
-    breathe.duration = 0.7 / speed;
-    breathe.autoreverses = YES;
-    breathe.repeatCount = HUGE_VALF;
-    breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:breathe forKey:@"pg_breathe"];
-}
-
-- (void)startSymmetricAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_symmetric"];
-    
-    CFTimeInterval drawDuration = 1.2 / speed;
-    
-    CABasicAnimation *draw = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-    draw.fromValue = @0.0;
-    draw.toValue = @1.0;
-    draw.duration = drawDuration;
-    draw.autoreverses = YES;
-    draw.repeatCount = HUGE_VALF;
-    draw.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:draw forKey:@"pg_symmetric"];
-}
-
-- (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
-    if (style == kMoodyStyleSymmetric) {
-        [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
-    } else {
-        [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
-    }
-}
-
-- (void)removeAllStyleAnimationsFromLayer:(CAShapeLayer *)layer {
-    if (!layer) return;
-    [layer removeAnimationForKey:@"pg_breathe"];
-    [layer removeAnimationForKey:@"pg_symmetric"];
-}
-
-#pragma mark - Teardown
-
-- (void)teardownLayers {
-    if (gPGLayer) {
-        [self removeAllStyleAnimationsFromLayer:gPGLayer];
-        [gPGLayer removeFromSuperlayer];
-        gPGLayer = nil;
-    }
-    if (gPGSecondLayer) {
-        [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
-        [gPGSecondLayer removeFromSuperlayer];
-        gPGSecondLayer = nil;
-    }
-}
-
-#pragma mark - Public API
-
-- (void)showWithColor:(UIColor *)color
-                style:(NSInteger)style
-             animated:(BOOL)animated {
-    if (!color) return;
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *w = [self getOrCreateWindow];
-        if (!w) {
-            [self writePGLog:@"showWithColor: no window!"];
-            return;
-        }
-        UIView *host = w.rootViewController.view;
-        if (!host) {
-            [self writePGLog:@"showWithColor: no host view!"];
-            return;
-        }
-        
-        if ((gPGLayer || gPGSecondLayer) && gPGStyle != style) {
-            [self writePGLog:[NSString stringWithFormat:@"Style change (%ld -> %ld)", (long)gPGStyle, (long)style]];
-            [self teardownLayers];
-        }
-        
-        if (!gPGLayer && !gPGSecondLayer) {
-            if (style == kMoodyStyleSymmetric) {
-                UIBezierPath *rightPath = [self symmetricRightPathForBounds:host.bounds];
-                UIBezierPath *leftPath  = [self symmetricLeftPathForBounds:host.bounds];
-                gPGLayer       = [self createSymmetricLayerWithPath:rightPath color:color];
-                gPGSecondLayer = [self createSymmetricLayerWithPath:leftPath  color:color];
-                [host.layer addSublayer:gPGLayer];
-                [host.layer addSublayer:gPGSecondLayer];
-                
-                [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
-                [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed];
-            } else {
-                gPGLayer = [self createOutlineLayerWithColor:color bounds:host.bounds];
-                [host.layer addSublayer:gPGLayer];
-                [self startBreathingAnimationOnLayer:gPGLayer speed:gPGBreathingSpeed];
-            }
-            
-            gPGStyle = style;
-            gPGCurrentColor = color;
-            gPGActive = YES;
-            [self writePGLog:[NSString stringWithFormat:@"STARTED style=%ld color=%@ breathe=%.2f draw=%.2f",
-                              (long)style, color, gPGBreathingSpeed, gPGDrawSpeed]];
-        } else {
-            if (![gPGCurrentColor isEqual:color]) {
-                gPGCurrentColor = color;
-                
-                NSArray<CAShapeLayer *> *layers = @[];
-                if (gPGLayer) layers = [layers arrayByAddingObject:gPGLayer];
-                if (gPGSecondLayer) layers = [layers arrayByAddingObject:gPGSecondLayer];
-                
-                for (CAShapeLayer *layer in layers) {
-                    CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
-                    colorAnim.fromValue = (id)layer.strokeColor;
-                    colorAnim.toValue = (id)color.CGColor;
-                    colorAnim.duration = 0.4;
-                    colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-                    [layer addAnimation:colorAnim forKey:@"pg_color"];
-                    
-                    CABasicAnimation *shadowAnim = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
-                    shadowAnim.fromValue = (id)layer.shadowColor;
-                    shadowAnim.toValue = (id)color.CGColor;
-                    shadowAnim.duration = 0.4;
-                    [layer addAnimation:shadowAnim forKey:@"pg_shadow_color"];
-                    
-                    layer.strokeColor = color.CGColor;
-                    layer.shadowColor = color.CGColor;
-                }
-                [self writePGLog:[NSString stringWithFormat:@"Color UPDATED to %@", color]];
-            }
-        }
-    });
-}
-
-- (void)stopAnimated:(BOOL)animated {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!gPGLayer && !gPGSecondLayer) {
-            gPGActive = NO;
-            return;
-        }
-        
-        NSMutableArray<CAShapeLayer *> *layers = [NSMutableArray array];
-        if (gPGLayer) { [layers addObject:gPGLayer]; gPGLayer = nil; }
-        if (gPGSecondLayer) { [layers addObject:gPGSecondLayer]; gPGSecondLayer = nil; }
-        gPGCurrentColor = nil;
-        gPGActive = NO;
-        
-        for (CAShapeLayer *layer in layers) {
-            [self removeAllStyleAnimationsFromLayer:layer];
-            [layer removeAnimationForKey:@"pg_color"];
-            [layer removeAnimationForKey:@"pg_shadow_color"];
-            
-            if (animated) {
-                CABasicAnimation *fadeOut = [CABasicAnimation animationWithKeyPath:@"opacity"];
-                fadeOut.fromValue = @(layer.opacity);
-                fadeOut.toValue = @0.0;
-                fadeOut.duration = 0.35;
-                [layer addAnimation:fadeOut forKey:@"pg_fadeout"];
-                layer.opacity = 0.0;
-                
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
-                    [layer removeFromSuperlayer];
-                });
-            } else {
-                [layer removeFromSuperlayer];
-            }
-        }
-        [self writePGLog:@"STOPPED"];
-    });
-}
-
-- (void)setBreathingSpeed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    gPGBreathingSpeed = speed;
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (gPGLayer && gPGActive) {
-            [self removeAllStyleAnimationsFromLayer:gPGLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGLayer];
-        }
-        if (gPGSecondLayer && gPGActive) {
-            [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer];
-        }
-    });
-}
-
-- (void)setDrawSpeed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    gPGDrawSpeed = speed;
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (gPGLayer && gPGActive) {
-            [self removeAllStyleAnimationsFromLayer:gPGLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGLayer];
-        }
-        if (gPGSecondLayer && gPGActive) {
-            [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
-            [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer];
-        }
-    });
-}
-
-- (BOOL)isActive {
-    return gPGActive;
-}
-
-@end
+    CGFloat cornerRadius = 
