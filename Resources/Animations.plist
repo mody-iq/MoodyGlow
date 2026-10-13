@@ -24,31 +24,7 @@
             <true/>
         </dict>
 
-        <!-- ===== REPEAT COUNT ===== -->
-        <dict>
-            <key>cell</key>
-            <string>PSGroupCell</string>
-            <key>label</key>
-            <string>Repeat Count</string>
-        </dict>
-        <dict>
-            <key>cell</key>
-            <string>PSSliderCell</string>
-            <key>key</key>
-            <string>RepeatCount</string>
-            <key>defaults</key>
-            <string>com.moody.moodyglow</string>
-            <key>default</key>
-            <integer>2</integer>
-            <key>min</key>
-            <integer>1</integer>
-            <key>max</key>
-            <integer>5</integer>
-            <key>showValue</key>
-            <true/>
-        </dict>
-
-        <!-- ===== SPEED ===== -->
+        <!-- ===== DRAW SPEED ===== -->
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
