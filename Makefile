@@ -21,3 +21,4 @@ include $(THEOS_MAKE_PATH)/bundle.mk
 
 after-install::
 	install.exec "killall -9 SpringBoard"
+
