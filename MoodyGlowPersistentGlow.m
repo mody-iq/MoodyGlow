@@ -5,7 +5,6 @@
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 
-// Style constants
 static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStyleSymmetric = 6;
 
@@ -53,48 +52,52 @@ static CGFloat gPGDrawSpeed = 1.0;
     }
 }
 
-#pragma mark - Lock Screen Scene Detection
+#pragma mark - Scene Discovery
 
-// Try to get the lock screen scene from SBLockScreenManager._hostingWindowScene
-- (UIWindowScene *)lockScreenScene {
-    Class cls = NSClassFromString(@"SBLockScreenManager");
-    if (!cls) return nil;
+// Find the SBLockScreenWindow and return its scene.
+// This is the most reliable way to place our overlay above the lock screen.
+- (UIWindowScene *)lockScreenSceneViaWindow {
+    Class lockWinCls = NSClassFromString(@"SBLockScreenWindow");
     
-    id mgr = nil;
-    SEL sharedSel = NSSelectorFromString(@"sharedInstance");
-    if ([cls respondsToSelector:sharedSel]) {
-        IMP imp = [cls methodForSelector:sharedSel];
-        if (imp) {
-            id (*func)(id, SEL) = (void *)imp;
-            mgr = func(cls, sharedSel);
+    // Iterate ALL windows in ALL scenes
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        for (UIWindow *w in ws.windows) {
+            if (lockWinCls && [w isKindOfClass:lockWinCls]) {
+                [self writePGLog:[NSString stringWithFormat:
+                                  @"Found SBLockScreenWindow in scene (level=%g, state=%ld)",
+                                  w.windowLevel, (long)ws.activationState]];
+                return ws;
+            }
         }
-    }
-    if (!mgr) return nil;
-    
-    SEL hostSel = NSSelectorFromString(@"_hostingWindowScene");
-    if (![mgr respondsToSelector:hostSel]) {
-        [self writePGLog:@"SBLockScreenManager does not respond to _hostingWindowScene"];
-        return nil;
-    }
-    
-    IMP imp = [mgr methodForSelector:hostSel];
-    if (!imp) return nil;
-    
-    id (*func)(id, SEL) = (void *)imp;
-    id result = func(mgr, hostSel);
-    if ([result isKindOfClass:[UIWindowScene class]]) {
-        return (UIWindowScene *)result;
     }
     return nil;
 }
 
+// Dump ALL windows and their levels to help debugging
+- (void)dumpAllWindows {
+    NSMutableString *s = [NSMutableString string];
+    [s appendString:@"--- Windows dump ---\n"];
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        [s appendFormat:@"Scene %p state=%ld windows=%lu\n",
+         ws, (long)ws.activationState, (unsigned long)ws.windows.count];
+        for (UIWindow *w in ws.windows) {
+            [s appendFormat:@"   %@ level=%g key=%d hidden=%d\n",
+             NSStringFromClass([w class]), w.windowLevel, w.isKeyWindow, w.hidden];
+        }
+    }
+    [self writePGLog:s];
+}
+
 - (UIWindowScene *)findBestScene {
-    // Priority 1: Lock screen scene (if available)
-    UIWindowScene *lsScene = [self lockScreenScene];
-    if (lsScene) {
-        [self writePGLog:[NSString stringWithFormat:@"Using LOCK SCREEN scene (state=%ld, windows=%lu)",
-                          (long)lsScene.activationState, (unsigned long)lsScene.windows.count]];
-        return lsScene;
+    // Priority 1: Scene that contains SBLockScreenWindow
+    UIWindowScene *lockScene = [self lockScreenSceneViaWindow];
+    if (lockScene) {
+        [self writePGLog:@"Using LOCK SCREEN scene (via SBLockScreenWindow)"];
+        return lockScene;
     }
     
     // Priority 2: Scene with key window
@@ -150,7 +153,8 @@ static CGFloat gPGDrawSpeed = 1.0;
     
     UIWindow *w = [[UIWindow alloc] initWithWindowScene:targetScene];
     w.frame = targetScene.coordinateSpace.bounds;
-    w.windowLevel = UIWindowLevelAlert + 100000;
+    // Use the absolute maximum level so we sit above everything
+    w.windowLevel = CGFLOAT_MAX;
     w.backgroundColor = [UIColor clearColor];
     w.userInteractionEnabled = NO;
     w.hidden = NO;
@@ -164,6 +168,10 @@ static CGFloat gPGDrawSpeed = 1.0;
     gPGWindow = w;
     [self writePGLog:[NSString stringWithFormat:@"Window created (level=%g, scene=%p)",
                       w.windowLevel, targetScene]];
+    
+    // Dump all windows for debugging
+    [self dumpAllWindows];
+    
     return w;
 }
 
