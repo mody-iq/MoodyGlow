@@ -10,6 +10,7 @@ static CAShapeLayer *gPGLayer = nil;
 static UIBezierPath *gPGPath = nil;
 static UIColor *gPGCurrentColor = nil;
 static BOOL gPGActive = NO;
+static CGFloat gPGBreathingSpeed = 1.0;
 
 @implementation MoodyGlowPersistentGlow
 
@@ -95,6 +96,26 @@ static BOOL gPGActive = NO;
     return path;
 }
 
+#pragma mark - Breathing Animation
+
+- (void)startBreathingAnimation {
+    if (!gPGLayer) return;
+    
+    CGFloat speed = gPGBreathingSpeed;
+    if (speed < 0.1) speed = 0.1;
+    
+    [gPGLayer removeAnimationForKey:@"pg_breathe"];
+    
+    CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    breathe.fromValue = @0.4;
+    breathe.toValue = @1.0;
+    breathe.duration = 0.7 / speed;
+    breathe.autoreverses = YES;
+    breathe.repeatCount = HUGE_VALF;
+    breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [gPGLayer addAnimation:breathe forKey:@"pg_breathe"];
+}
+
 #pragma mark - Public API
 
 - (void)showWithColor:(UIColor *)color animated:(BOOL)animated {
@@ -123,24 +144,16 @@ static BOOL gPGActive = NO;
             layer.shadowRadius = 12.0;
             layer.shadowOpacity = 1.0;
             layer.shadowOffset = CGSizeZero;
-            layer.opacity = 0.55;
+            layer.opacity = 0.4;
             layer.zPosition = 9999;
             [host.layer addSublayer:layer];
             gPGLayer = layer;
             gPGCurrentColor = color;
             
-            // Breathing animation (infinite)
-            CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
-            breathe.fromValue = @0.55;
-            breathe.toValue = @1.0;
-            breathe.duration = 1.4;
-            breathe.autoreverses = YES;
-            breathe.repeatCount = HUGE_VALF;
-            breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [layer addAnimation:breathe forKey:@"pg_breathe"];
+            [self startBreathingAnimation];
             
             gPGActive = YES;
-            NSLog(@"[Moody Glow PG] Glow STARTED with color: %@", color);
+            NSLog(@"[Moody Glow PG] Glow STARTED with color: %@ (speed=%.2f)", color, gPGBreathingSpeed);
         } else {
             // ---- Already active: update color if changed ----
             if (![gPGCurrentColor isEqual:color]) {
@@ -200,6 +213,18 @@ static BOOL gPGActive = NO;
         }
         
         NSLog(@"[Moody Glow PG] Glow STOPPED.");
+    });
+}
+
+- (void)setBreathingSpeed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    gPGBreathingSpeed = speed;
+    NSLog(@"[Moody Glow PG] Breathing speed set to %.2f", speed);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gPGLayer && gPGActive) {
+            [self startBreathingAnimation];
+        }
     });
 }
 
