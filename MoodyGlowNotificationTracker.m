@@ -1,11 +1,12 @@
 // Moody Glow - Notification Tracker Implementation
 // Developer: Moody
-// Logs to /var/mobile/Documents/MoodyGlow.log AND notifies a change handler
 
 #import "MoodyGlowNotificationTracker.h"
+#import <unistd.h>
 
 @interface MoodyGlowNotificationTracker ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *map;
+@property (nonatomic, strong) NSMutableArray<NSString *> *order;
 @property (nonatomic, strong) NSString *logFilePath;
 @property (nonatomic, copy) void (^changeHandler)(NSInteger, NSArray<NSString *> *);
 @end
@@ -27,6 +28,7 @@
     self = [super init];
     if (self) {
         _map = [NSMutableDictionary dictionary];
+        _order = [NSMutableArray array];
         _logFilePath = @"/var/mobile/Documents/MoodyGlow.log";
         
         NSString *dir = [_logFilePath stringByDeletingLastPathComponent];
@@ -40,17 +42,12 @@
     return self;
 }
 
-#pragma mark - File Logging
-
 - (void)writeLog:(NSString *)line {
     if (!line) return;
-    
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"HH:mm:ss";
     NSString *timestamp = [fmt stringFromDate:[NSDate date]];
-    
     NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", timestamp, line];
-    
     NSLog(@"[Moody Glow Tracker] %@", line);
     
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:self.logFilePath];
@@ -73,8 +70,6 @@
     }
 }
 
-#pragma mark - Change Notification
-
 - (void)notifyChange {
     void (^handler)(NSInteger, NSArray<NSString *> *) = _changeHandler;
     if (!handler) return;
@@ -82,8 +77,6 @@
     NSArray<NSString *> *apps = [self uniqueBundleIDs];
     handler(count, apps);
 }
-
-#pragma mark - Public API
 
 - (void)addNotificationWithID:(NSString *)identifier bundleID:(NSString *)bundleID {
     if (!identifier || identifier.length == 0) return;
@@ -94,8 +87,8 @@
         NSString *oldBundle = self.map[identifier];
         self.map[identifier] = bundleID;
         
-        // Log only if genuinely new
         if (!wasExisting) {
+            [self.order addObject:identifier];
             NSArray *apps = [self uniqueBundleIDs];
             [self writeLog:[NSString stringWithFormat:@"ADD %@ | bundle=%@ | total=%lu | uniqueApps=%lu",
                             identifier, bundleID,
@@ -103,7 +96,6 @@
                             (unsigned long)apps.count]];
         }
         
-        // Notify only if state actually changed
         BOOL bundleChanged = (oldBundle && ![oldBundle isEqualToString:bundleID]);
         if (!wasExisting || bundleChanged) {
             [self notifyChange];
@@ -119,6 +111,7 @@
         if (!existed) return;
         
         [self.map removeObjectForKey:identifier];
+        [self.order removeObject:identifier];
         NSArray *apps = [self uniqueBundleIDs];
         [self writeLog:[NSString stringWithFormat:@"REMOVE %@ | total=%lu | uniqueApps=%lu",
                         identifier,
@@ -133,6 +126,7 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         BOOL hadAny = (self.map.count > 0);
         [self.map removeAllObjects];
+        [self.order removeAllObjects];
         [self writeLog:@"REMOVE ALL | total=0 | uniqueApps=0"];
         
         if (hadAny) {
@@ -145,9 +139,19 @@
     return self.map.count;
 }
 
+// Unique bundle IDs in order of first arrival (stable order for color cycling)
 - (NSArray<NSString *> *)uniqueBundleIDs {
-    NSSet *set = [NSSet setWithArray:[self.map allValues]];
-    return [set allObjects];
+    NSMutableArray<NSString *> *result = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    
+    for (NSString *identifier in self.order) {
+        NSString *bundle = self.map[identifier];
+        if (!bundle) continue;
+        if ([seen containsObject:bundle]) continue;
+        [seen addObject:bundle];
+        [result addObject:bundle];
+    }
+    return result;
 }
 
 - (void)setChangeHandler:(void (^)(NSInteger, NSArray<NSString *> *))handler {
