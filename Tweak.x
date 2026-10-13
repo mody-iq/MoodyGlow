@@ -1,4 +1,4 @@
-// Moody Glow - Multi-Style Persistent Glow + Speeds
+// Moody Glow - Lock State Awareness
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
 
@@ -9,6 +9,7 @@
 #import "MoodyGlowPersistentGlow.h"
 #import "MoodyGlowColorExtractor.h"
 #import "MoodyGlowPrefs.h"
+#import "MoodyGlowSystemState.h"
 
 #pragma mark - Glow Refresh Logic
 
@@ -26,13 +27,11 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
     
-    // ---- Apply speeds from prefs ----
     CGFloat breathing = [prefs breathingSpeed];
     CGFloat draw = [prefs speed];
     [[MoodyGlowPersistentGlow sharedInstance] setBreathingSpeed:breathing];
     [[MoodyGlowPersistentGlow sharedInstance] setDrawSpeed:draw];
     
-    // ---- Determine color ----
     NSString *firstBundle = bundleIDs.firstObject;
     UIColor *color = nil;
     if ([prefs colorMode] == MoodyGlowColorModeIcon) {
@@ -45,8 +44,9 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }
     
     NSInteger style = [prefs selectedAnimationIndex];
-    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, breathe=%.2f, draw=%.2f, color=%@",
-          (long)count, (long)style, breathing, draw, color);
+    BOOL locked = [MoodyGlowSystemState isDeviceLocked];
+    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, locked=%d, color=%@",
+          (long)count, (long)style, locked, color);
     
     [[MoodyGlowPersistentGlow sharedInstance] showWithColor:color
                                                       style:style
@@ -55,6 +55,8 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- iOS 14+ Group ---
 %group iOS14Plus
+
+#pragma mark - Notification Hooks
 
 %hook NCNotificationDispatcher
 
@@ -114,11 +116,31 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 %end
 
+#pragma mark - Lock State Hook
+
+%hook SBLockScreenManager
+
+- (void)_setUILocked:(BOOL)locked {
+    %orig;
+    
+    BOOL wasLocked = [MoodyGlowSystemState isDeviceLocked];
+    NSLog(@"[Moody Glow] _setUILocked called: locked=%d (wasLocked=%d)", locked, wasLocked);
+    
+    // If device just got UNLOCKED (locked == NO), stop glow immediately
+    if (!locked) {
+        NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow.");
+        [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        [[MoodyGlowNotificationTracker sharedInstance] removeAll];
+    }
+}
+
+%end
+
 %end // iOS14Plus
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Multi-Style + Speeds) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Lock Aware) ============");
     %init(iOS14Plus);
     
     [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
@@ -126,5 +148,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
     
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Handler registered (breathe + draw speeds).");
+    NSLog(@"[Moody Glow] Lock-aware handler registered.");
 }
