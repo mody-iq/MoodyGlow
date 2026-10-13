@@ -6,6 +6,7 @@
     <string>Animations</string>
     <key>items</key>
     <array>
+        <!-- ===== ANIMATION STYLE ===== -->
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
@@ -22,17 +23,17 @@
             <key>isController</key>
             <true/>
         </dict>
+
+        <!-- ===== REPEAT COUNT ===== -->
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
-            <string>ANIMATION CONTROLS</string>
+            <string>Repeat Count</string>
         </dict>
         <dict>
             <key>cell</key>
             <string>PSSliderCell</string>
-            <key>label</key>
-            <string>Repeat Count</string>
             <key>key</key>
             <string>RepeatCount</string>
             <key>defaults</key>
@@ -46,11 +47,17 @@
             <key>showValue</key>
             <true/>
         </dict>
+
+        <!-- ===== SPEED ===== -->
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Speed</string>
+        </dict>
         <dict>
             <key>cell</key>
             <string>PSSliderCell</string>
-            <key>label</key>
-            <string>Speed</string>
             <key>key</key>
             <string>Speed</string>
             <key>defaults</key>
@@ -64,11 +71,17 @@
             <key>showValue</key>
             <true/>
         </dict>
+
+        <!-- ===== BREATHING SPEED ===== -->
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Breathing Speed</string>
+        </dict>
         <dict>
             <key>cell</key>
             <string>PSSliderCell</string>
-            <key>label</key>
-            <string>Breathing Speed</string>
             <key>key</key>
             <string>BreathingSpeed</string>
             <key>defaults</key>
@@ -82,6 +95,8 @@
             <key>showValue</key>
             <true/>
         </dict>
+
+        <!-- ===== COLOR MODE ===== -->
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
@@ -118,6 +133,8 @@
             <key>action</key>
             <string>pickStaticColor</string>
         </dict>
+
+        <!-- ===== TEST ANIMATION ===== -->
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
