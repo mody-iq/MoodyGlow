@@ -8,6 +8,7 @@
 static UIWindow *gPGWindow = nil;
 static CAShapeLayer *gPGLayer = nil;
 static UIBezierPath *gPGPath = nil;
+static UIColor *gPGCurrentColor = nil;
 static BOOL gPGActive = NO;
 
 @implementation MoodyGlowPersistentGlow
@@ -110,7 +111,7 @@ static BOOL gPGActive = NO;
         }
         
         if (!gPGLayer) {
-            // ---- Create the layer (first time) ----
+            // ---- First time: create the layer ----
             CAShapeLayer *layer = [CAShapeLayer layer];
             layer.path = gPGPath.CGPath;
             layer.strokeColor = color.CGColor;
@@ -122,10 +123,11 @@ static BOOL gPGActive = NO;
             layer.shadowRadius = 12.0;
             layer.shadowOpacity = 1.0;
             layer.shadowOffset = CGSizeZero;
-            layer.opacity = 0.0;
+            layer.opacity = 0.55;
             layer.zPosition = 9999;
             [host.layer addSublayer:layer];
             gPGLayer = layer;
+            gPGCurrentColor = color;
             
             // Breathing animation (infinite)
             CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
@@ -137,19 +139,13 @@ static BOOL gPGActive = NO;
             breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             [layer addAnimation:breathe forKey:@"pg_breathe"];
             
-            // Quick fade-in from 0
-            CABasicAnimation *fadeIn = [CABasicAnimation animationWithKeyPath:@"opacity"];
-            fadeIn.fromValue = @0.0;
-            fadeIn.toValue = @0.55;
-            fadeIn.duration = 0.35;
-            [layer addAnimation:fadeIn forKey:@"pg_fadein"];
-            
             gPGActive = YES;
             NSLog(@"[Moody Glow PG] Glow STARTED with color: %@", color);
         } else {
-            // ---- Update color (smooth crossfade) ----
-            UIColor *oldColor = [UIColor colorWithCGColor:gPGLayer.strokeColor];
-            if (![oldColor isEqual:color]) {
+            // ---- Already active: update color if changed ----
+            if (![gPGCurrentColor isEqual:color]) {
+                gPGCurrentColor = color;
+                
                 CABasicAnimation *colorAnim = [CABasicAnimation animationWithKeyPath:@"strokeColor"];
                 colorAnim.fromValue = (id)gPGLayer.strokeColor;
                 colorAnim.toValue = (id)color.CGColor;
@@ -181,10 +177,10 @@ static BOOL gPGActive = NO;
         CAShapeLayer *layer = gPGLayer;
         gPGLayer = nil;
         gPGPath = nil;
+        gPGCurrentColor = nil;
         gPGActive = NO;
         
         [layer removeAnimationForKey:@"pg_breathe"];
-        [layer removeAnimationForKey:@"pg_fadein"];
         [layer removeAnimationForKey:@"pg_color"];
         [layer removeAnimationForKey:@"pg_shadow_color"];
         
@@ -194,6 +190,7 @@ static BOOL gPGActive = NO;
             fadeOut.toValue = @0.0;
             fadeOut.duration = 0.35;
             [layer addAnimation:fadeOut forKey:@"pg_fadeout"];
+            layer.opacity = 0.0;
             
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 [layer removeFromSuperlayer];
