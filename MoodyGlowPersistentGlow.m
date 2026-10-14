@@ -447,7 +447,7 @@ static NSTimer *gPGColorTimer = nil;
     NSString *key = isLeft ? @"pg_contrary_left" : @"pg_contrary_right";
     [layer removeAnimationForKey:key];
 
-    CGFloat barHeight = layer.path.boundingBox.size.height;
+    CGFloat barHeight = CGRectGetHeight(CGPathGetBoundingBox(layer.path));
     CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
     CFTimeInterval duration = 2.0 / speed;
 
