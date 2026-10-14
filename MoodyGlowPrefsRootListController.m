@@ -8,6 +8,7 @@
 #import "MoodyGlowLocalization.h"
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowHeaderView.h"
+#import "MoodyGlowLog.h"
 
 static NSString * const kMoodyOriginalLabelKey = @"moodyOriginalLabel";
 static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
@@ -184,7 +185,7 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
     [d setInteger:mode forKey:@"Language"];
     [d synchronize];
     
-    NSLog(@"[Moody Glow] Language changed to mode %ld", (long)mode);
+    MGLog(@"[Moody Glow] Language changed to mode %ld", (long)mode);
     
     [self applyLocalization];
     [self applyRTLIfNeeded];
@@ -218,7 +219,7 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
             [d removeObjectForKey:key];
         }
         [d synchronize];
-        NSLog(@"[Moody Glow] All settings reset to defaults.");
+        MGLog(@"[Moody Glow] All settings reset to defaults.");
         
         [weakSelf applyLocalization];
         [weakSelf applyRTLIfNeeded];
