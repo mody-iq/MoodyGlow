@@ -1,7 +1,7 @@
 // Moody Glow - Tweak.x
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Features: filtering (Lockscreen/Universal/DND/ActiveApp), color cycling, custom colors
+// Features: filters, blackout, wake screen, color cycling, custom colors
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -12,6 +12,7 @@
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowSystemState.h"
 #import "MoodyGlowCustomColors.h"
+#import "MoodyGlowBlackout.h"
 
 #pragma mark - Color Cache
 
@@ -49,15 +50,32 @@ static UIColor *moodyGlowCachedColorForBundle(NSString *bundleID) {
     return fetched;
 }
 
+#pragma mark - Blackout Helper
+
+static UIWindow *moodyGlowLockScreenWindow(void) {
+    Class lockCls = NSClassFromString(@"SBCoverSheetWindow");
+    if (!lockCls) return nil;
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        UIWindowScene *ws = (UIWindowScene *)scene;
+        for (UIWindow *w in ws.windows) {
+            if ([w isKindOfClass:lockCls] && !w.hidden && w.alpha > 0.01) {
+                return w;
+            }
+        }
+    }
+    return nil;
+}
+
 #pragma mark - Glow Refresh Logic
 
 static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> *bundleIDs) {
     MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
     [prefs reload];
 
-    // ---- 1. Global enabled ----
     if (![prefs isEnabled]) {
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        [[MoodyGlowBlackout removeOverlayAnimated:NO];
         return;
     }
 
@@ -66,36 +84,32 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
-    // ---- 2. Lock state filtering ----
     BOOL locked = [MoodyGlowSystemState isDeviceLocked];
 
+    // Lock state filtering
     if (locked) {
         if (![prefs isLockscreenEnabled]) {
-            NSLog(@"[Moody Glow] Skipping: Lockscreen disabled.");
             [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
             return;
         }
     } else {
         if (![prefs isUniversalEnabled]) {
-            NSLog(@"[Moody Glow] Skipping: Universal disabled (device unlocked).");
             [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
             return;
         }
         if (![prefs showInActiveApp]) {
-            NSLog(@"[Moody Glow] Skipping: Show in Active App disabled.");
             [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
             return;
         }
     }
 
-    // ---- 3. DND filtering ----
+    // DND filtering
     if (![prefs showInDND] && [MoodyGlowSystemState isDNDActive]) {
-        NSLog(@"[Moody Glow] Skipping: DND active and Show in DND disabled.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
         return;
     }
 
-    // ---- 4. Apply speeds & thickness ----
+    // Speeds & thickness
     CGFloat breathing = [prefs breathingSpeed];
     CGFloat draw = [prefs speed];
     CGFloat thickness = [prefs glowThickness];
@@ -105,41 +119,54 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
     UIColor *fallback = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
 
-    // ---- 5. Static color mode ----
+    // Compute colors array
+    NSMutableArray<UIColor *> *colors = [NSMutableArray array];
     if ([prefs colorMode] == MoodyGlowColorModeStatic) {
-        UIColor *single = [prefs staticColor];
-        if (!single) single = fallback;
-        [[MoodyGlowPersistentGlow sharedInstance] showWithColors:@[single]
-                                                          style:[prefs selectedAnimationIndex]
-                                                       animated:YES];
-        return;
+        UIColor *single = [prefs staticColor] ?: fallback;
+        [colors addObject:single];
+    } else if (![prefs isColorCyclingEnabled] || bundleIDs.count == 1) {
+        UIColor *c = moodyGlowCachedColorForBundle(bundleIDs.firstObject) ?: fallback;
+        [colors addObject:c];
+    } else {
+        for (NSString *bundleID in bundleIDs) {
+            UIColor *c = moodyGlowCachedColorForBundle(bundleID) ?: fallback;
+            [colors addObject:c];
+        }
     }
 
-    // ---- 6. Icon color mode ----
-    if (![prefs isColorCyclingEnabled] || bundleIDs.count == 1) {
-        NSString *first = bundleIDs.firstObject;
-        UIColor *c = moodyGlowCachedColorForBundle(first);
-        if (!c) c = fallback;
-        [[MoodyGlowPersistentGlow sharedInstance] showWithColors:@[c]
-                                                          style:[prefs selectedAnimationIndex]
-                                                       animated:YES];
-        return;
+    // ---- Blackout (only when locked) ----
+    BOOL blackoutEnabled = [prefs isBlackoutEnabled];
+    BOOL wakeAfter = [prefs wakeScreenAfterBlackout];
+    UIWindow *lockWindow = nil;
+
+    if (blackoutEnabled && locked) {
+        lockWindow = moodyGlowLockScreenWindow();
+        if (lockWindow) {
+            [MoodyGlowBlackout showOverlayInWindow:lockWindow];
+        }
     }
 
-    // ---- 7. Cycling ----
-    NSMutableArray<UIColor *> *colors = [NSMutableArray arrayWithCapacity:bundleIDs.count];
-    for (NSString *bundleID in bundleIDs) {
-        UIColor *c = moodyGlowCachedColorForBundle(bundleID);
-        [colors addObject:c ? c : fallback];
-    }
-
-    NSInteger style = [prefs selectedAnimationIndex];
-    NSLog(@"[Moody Glow] Refresh: count=%ld, style=%ld, colors=%lu, thickness=%.1f",
-          (long)count, (long)style, (unsigned long)colors.count, thickness);
-
+    // Show the persistent glow
     [[MoodyGlowPersistentGlow sharedInstance] showWithColors:colors
-                                                       style:style
+                                                       style:[prefs selectedAnimationIndex]
                                                     animated:YES];
+
+    NSLog(@"[Moody Glow] Refresh: count=%ld, locked=%d, blackout=%d, wake=%d",
+          (long)count, locked, blackoutEnabled, wakeAfter);
+
+    // ---- Schedule blackout cleanup ----
+    if (blackoutEnabled && locked) {
+        NSTimeInterval delay = 4.0; // showcase duration
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (wakeAfter) {
+                [MoodyGlowBlackout removeOverlayAnimated:YES];
+            } else {
+                [MoodyGlowBlackout removeOverlayAnimated:NO];
+                [MoodyGlowBlackout turnOffScreen];
+            }
+        });
+    }
 }
 
 // --- iOS 14+ Group ---
@@ -213,8 +240,9 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     %orig;
 
     if (!locked) {
-        NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow.");
+        NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        [[MoodyGlowBlackout removeOverlayAnimated:NO];
         [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     }
 }
@@ -225,7 +253,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Filters Active) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Blackout Active) ============");
     %init(iOS14Plus);
 
     moodyGlowInitColorCacheIfNeeded();
@@ -235,5 +263,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
 
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Filter handler registered.");
+    NSLog(@"[Moody Glow] Blackout + Wake handler registered.");
 }
