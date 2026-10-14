@@ -170,6 +170,55 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }
 }
 
+#pragma mark - Test Animation Callback
+
+static void moodyGlowTestCallback(CFNotificationCenterRef center,
+                                   void *observer,
+                                   CFStringRef name,
+                                   const void *object,
+                                   CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        MGLog(@"[Moody Glow] Test button pressed");
+
+        MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
+        [prefs reload];
+
+        if (![prefs isEnabled]) {
+            MGLog(@"[Moody Glow] Tweak disabled - test ignored");
+            return;
+        }
+
+        // Determine color
+        UIColor *color = nil;
+        if ([prefs colorMode] == MoodyGlowColorModeStatic) {
+            color = [prefs staticColor];
+        }
+        if (!color) {
+            color = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
+        }
+
+        // Apply current speeds & thickness
+        [[MoodyGlowPersistentGlow sharedInstance] setBreathingSpeed:[prefs breathingSpeed]];
+        [[MoodyGlowPersistentGlow sharedInstance] setDrawSpeed:[prefs speed]];
+        [[MoodyGlowPersistentGlow sharedInstance] setGlowThickness:[prefs glowThickness]];
+
+        // Show the glow with the selected style
+        [[MoodyGlowPersistentGlow sharedInstance] showWithColors:@[color]
+                                                          style:[prefs selectedAnimationIndex]
+                                                       animated:YES];
+
+        MGLog(@"[Moody Glow] Test animation started (style=%ld)",
+              (long)[prefs selectedAnimationIndex]);
+
+        // Auto-stop after 4 seconds (test only)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+            MGLog(@"[Moody Glow] Test animation stopped");
+        });
+    });
+}
+
 // --- iOS 14+ Group ---
 %group iOS14Plus
 
@@ -264,5 +313,14 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
 
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    MGLog(@"[Moody Glow] Blackout + Wake handler registered.");
+
+    // Register test-animation notification observer
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                     NULL,
+                                     moodyGlowTestCallback,
+                                     CFSTR("com.moody.moodyglow.test"),
+                                     NULL,
+                                     CFNotificationSuspensionBehaviorDeliverImmediately);
+
+    MGLog(@"[Moody Glow] Blackout + Wake + Test handlers registered.");
 }
