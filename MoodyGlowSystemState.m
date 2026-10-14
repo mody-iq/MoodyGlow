@@ -1,75 +1,109 @@
 // Moody Glow - System State Implementation
 // Developer: Moody
-// Purpose: Detect device lock state and DND status using private APIs
 
 #import "MoodyGlowSystemState.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+static BOOL gMoodyCachedLocked = NO;
+static BOOL gMoodyHasCached = NO;
+
 @implementation MoodyGlowSystemState
 
-+ (BOOL)isDeviceLocked {
-    // Try SBUserAgent first (most reliable on iOS 14-18)
-    Class SBUserAgent = objc_getClass("SBUserAgent");
-    if (SBUserAgent) {
-        SEL sharedSel = NSSelectorFromString(@"sharedInstance");
-        if ([SBUserAgent respondsToSelector:sharedSel]) {
-            IMP sharedImp = [SBUserAgent methodForSelector:sharedSel];
-            if (sharedImp) {
-                id (*sharedFunc)(id, SEL) = (void *)sharedImp;
-                id agent = sharedFunc(SBUserAgent, sharedSel);
-                if (agent) {
-                    // Try isScreenLocked
-                    SEL lockSel = NSSelectorFromString(@"isScreenLocked");
-                    if ([agent respondsToSelector:lockSel]) {
-                        IMP lockImp = [agent methodForSelector:lockSel];
-                        if (lockImp) {
-                            BOOL (*lockFunc)(id, SEL) = (void *)lockImp;
-                            return lockFunc(agent, lockSel);
-                        }
-                    }
-                    // Try deviceIsLocked
-                    SEL lockSel2 = NSSelectorFromString(@"deviceIsLocked");
-                    if ([agent respondsToSelector:lockSel2]) {
-                        IMP lockImp2 = [agent methodForSelector:lockSel2];
-                        if (lockImp2) {
-                            BOOL (*lockFunc2)(id, SEL) = (void *)lockImp2;
-                            return lockFunc2(agent, lockSel2);
-                        }
-                    }
-                }
-            }
-        }
++ (void)setCachedLocked:(BOOL)locked {
+    gMoodyCachedLocked = locked;
+    gMoodyHasCached = YES;
+}
+
++ (void)refreshFromSystem {
+    Class mgrCls = NSClassFromString(@"SBLockScreenManager");
+    if (!mgrCls) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
     }
-    
-    // Fallback: use protectedDataAvailable (inverse of unlocked)
-    return ![UIApplication sharedApplication].protectedDataAvailable;
+
+    SEL sharedSel = NSSelectorFromString(@"sharedInstance");
+    if (![mgrCls respondsToSelector:sharedSel]) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
+    }
+
+    IMP sharedImp = [mgrCls methodForSelector:sharedSel];
+    if (!sharedImp) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
+    }
+    id (*sharedFunc)(id, SEL) = (void *)sharedImp;
+    id mgr = sharedFunc(mgrCls, sharedSel);
+    if (!mgr) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
+    }
+
+    SEL lockedSel = NSSelectorFromString(@"isUILocked");
+    if (![mgr respondsToSelector:lockedSel]) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
+    }
+
+    IMP lockedImp = [mgr methodForSelector:lockedSel];
+    if (!lockedImp) {
+        [self setCachedLocked:![UIApplication sharedApplication].protectedDataAvailable];
+        return;
+    }
+    BOOL (*lockedFunc)(id, SEL) = (void *)lockedImp;
+    BOOL locked = lockedFunc(mgr, lockedSel);
+    [self setCachedLocked:locked];
+}
+
++ (BOOL)isDeviceLocked {
+    if (!gMoodyHasCached) {
+        [self refreshFromSystem];
+    }
+    return gMoodyCachedLocked;
 }
 
 + (BOOL)isDNDActive {
-    Class DNDStateService = objc_getClass("DNDStateService");
+    Class DNDStateService = NSClassFromString(@"DNDStateService");
     if (!DNDStateService) return NO;
-    
+
+    id service = nil;
+
+    // Try sharedInstance
     SEL sharedSel = NSSelectorFromString(@"sharedInstance");
-    if (![DNDStateService respondsToSelector:sharedSel]) return NO;
-    
-    IMP sharedImp = [DNDStateService methodForSelector:sharedSel];
-    if (!sharedImp) return NO;
-    id (*sharedFunc)(id, SEL) = (void *)sharedImp;
-    id service = sharedFunc(DNDStateService, sharedSel);
+    if ([DNDStateService respondsToSelector:sharedSel]) {
+        IMP imp = [DNDStateService methodForSelector:sharedSel];
+        if (imp) {
+            id (*func)(id, SEL) = (void *)imp;
+            service = func(DNDStateService, sharedSel);
+        }
+    }
+
+    // Fallback: serviceForClientIdentifier:
+    if (!service) {
+        SEL clientSel = NSSelectorFromString(@"serviceForClientIdentifier:");
+        if ([DNDStateService respondsToSelector:clientSel]) {
+            IMP imp = [DNDStateService methodForSelector:clientSel];
+            if (imp) {
+                id (*func)(id, SEL, NSString *) = (void *)imp;
+                service = func(DNDStateService, clientSel, @"com.apple.springboard");
+            }
+        }
+    }
+
     if (!service) return NO;
-    
-    // queryCurrentStateWithError:
+
+    // Query state
     SEL querySel = NSSelectorFromString(@"queryCurrentStateWithError:");
     if (![service respondsToSelector:querySel]) return NO;
-    
+
     IMP queryImp = [service methodForSelector:querySel];
     if (!queryImp) return NO;
     id (*queryFunc)(id, SEL, NSError **) = (void *)queryImp;
     NSError *error = nil;
     id state = queryFunc(service, querySel, &error);
     if (!state) return NO;
-    
+
     // Check isActive
     SEL activeSel = NSSelectorFromString(@"isActive");
     if ([state respondsToSelector:activeSel]) {
@@ -79,7 +113,7 @@
             return activeFunc(state, activeSel);
         }
     }
-    
+
     return NO;
 }
 
