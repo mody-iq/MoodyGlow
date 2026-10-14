@@ -3,6 +3,7 @@
 // Purpose: Extract the dominant color from an app's icon using CoreImage
 
 #import "MoodyGlowColorExtractor.h"
+#import "MoodyGlowLog.h"
 #import <CoreImage/CoreImage.h>
 
 // Private UIKit API to fetch an app's icon by bundle identifier
@@ -27,7 +28,7 @@
                                                                      scale:[UIScreen mainScreen].scale];
         return icon;
     } @catch (NSException *exception) {
-        NSLog(@"[Moody Glow] Exception while fetching icon: %@", exception);
+        MGLog(@"[Moody Glow] Exception while fetching icon: %@", exception);
         return nil;
     }
 }
@@ -83,18 +84,18 @@
 + (UIColor *)colorForBundleID:(NSString *)bundleID {
     UIImage *icon = [self iconImageForBundleID:bundleID];
     if (!icon) {
-        NSLog(@"[Moody Glow] Could not fetch icon for bundle ID: %@", bundleID);
+        MGLog(@"[Moody Glow] Could not fetch icon for bundle ID: %@", bundleID);
         return nil;
     }
     
     UIColor *avg = [self averageColorFromImage:icon];
     if (!avg) {
-        NSLog(@"[Moody Glow] Could not extract average color for bundle ID: %@", bundleID);
+        MGLog(@"[Moody Glow] Could not extract average color for bundle ID: %@", bundleID);
         return nil;
     }
     
     UIColor *vibrant = [self vibrantVersionOfColor:avg];
-    NSLog(@"[Moody Glow] Extracted color for %@ -> %@", bundleID, vibrant);
+    MGLog(@"[Moody Glow] Extracted color for %@ -> %@", bundleID, vibrant);
     return vibrant;
 }
 
