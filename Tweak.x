@@ -311,9 +311,6 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center,
 
     moodyGlowInitColorCacheIfNeeded();
 
-    // Initialize lock state cache from the system
-    [MoodyGlowSystemState refreshFromSystem];
-
     [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
         moodyGlowRefreshPersistentGlow(count, bundleIDs);
     }];
