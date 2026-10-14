@@ -214,47 +214,59 @@
 #pragma mark - Cell Appearance
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
     NSString *bundleID = [spec propertyForKey:@"bundleID"];
     NSString *appName = [spec propertyForKey:@"appName"];
 
-    if (bundleID && appName) {
-        cell.textLabel.text = appName;
+    // If not our custom cell, use default behavior
+    if (!bundleID || !appName) {
+        return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    }
+
+    static NSString *cellID = @"MoodyGlowCustomColorCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                      reuseIdentifier:cellID];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
-
-        cell.detailTextLabel.text = bundleID;
-        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
         cell.detailTextLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightRegular];
+        cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
         cell.detailTextLabel.numberOfLines = 1;
+    }
 
-        UIImage *icon = [self iconForBundleID:bundleID];
-        if (icon) {
-            UIGraphicsBeginImageContextWithOptions(CGSizeMake(38, 38), NO, 0.0);
-            [icon drawInRect:CGRectMake(0, 0, 38, 38)];
-            UIImage *resized = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
+    // Set name (top) and bundle ID (bottom)
+    cell.textLabel.text = appName;
+    cell.detailTextLabel.text = bundleID;
 
-            cell.imageView.image = resized;
-            cell.imageView.layer.cornerRadius = 8.5;
-            cell.imageView.layer.cornerCurve = kCACornerCurveContinuous;
-            cell.imageView.clipsToBounds = YES;
-            cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
-        }
+    // Icon
+    UIImage *icon = [self iconForBundleID:bundleID];
+    if (icon) {
+        UIGraphicsBeginImageContextWithOptions(CGSizeMake(38, 38), NO, 0.0);
+        [icon drawInRect:CGRectMake(0, 0, 38, 38)];
+        UIImage *resized = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
 
-        NSNumber *hasCustom = [spec propertyForKey:@"hasCustom"];
-        UIColor *customColor = [spec propertyForKey:@"customUIColor"];
-        if (hasCustom.boolValue && customColor) {
-            UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 12, 12)];
-            dot.backgroundColor = customColor;
-            dot.layer.cornerRadius = 6;
-            dot.layer.shadowColor = customColor.CGColor;
-            dot.layer.shadowRadius = 4;
-            dot.layer.shadowOpacity = 0.8;
-            cell.accessoryView = dot;
-        } else {
-            cell.accessoryView = nil;
-        }
+        cell.imageView.image = resized;
+        cell.imageView.layer.cornerRadius = 8.5;
+        cell.imageView.layer.cornerCurve = kCACornerCurveContinuous;
+        cell.imageView.clipsToBounds = YES;
+        cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
+    }
+
+    // Custom color dot indicator
+    NSNumber *hasCustom = [spec propertyForKey:@"hasCustom"];
+    UIColor *customColor = [spec propertyForKey:@"customUIColor"];
+    if (hasCustom.boolValue && customColor) {
+        UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 14, 14)];
+        dot.backgroundColor = customColor;
+        dot.layer.cornerRadius = 7;
+        dot.layer.shadowColor = customColor.CGColor;
+        dot.layer.shadowRadius = 4;
+        dot.layer.shadowOpacity = 0.8;
+        cell.accessoryView = dot;
+    } else {
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
     }
 
     return cell;
