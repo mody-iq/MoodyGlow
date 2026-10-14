@@ -3,7 +3,7 @@
 
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
-
+#import "MoodyGlowLog.h"
 static const NSInteger kMoodyStyleContrary  = 0;
 static const NSInteger kMoodyStyleLightBar  = 1;
 static const NSInteger kMoodyStyleOutline   = 2;
@@ -52,7 +52,7 @@ static NSTimer *gPGColorTimer = nil;
     fmt.dateFormat = @"HH:mm:ss";
     NSString *entry = [NSString stringWithFormat:@"[%@] [PG] %@\n",
                        [fmt stringFromDate:[NSDate date]], msg];
-    NSLog(@"[Moody Glow PG] %@", msg);
+    MGLog(@"[Moody Glow PG] %@", msg);
 
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kPGLogPath];
     if (!fh) {
