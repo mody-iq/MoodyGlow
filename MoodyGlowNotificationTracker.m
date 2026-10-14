@@ -2,6 +2,7 @@
 // Developer: Moody
 
 #import "MoodyGlowNotificationTracker.h"
+#import "MoodyGlowLog.h"
 #import <unistd.h>
 
 @interface MoodyGlowNotificationTracker ()
@@ -48,7 +49,7 @@
     fmt.dateFormat = @"HH:mm:ss";
     NSString *timestamp = [fmt stringFromDate:[NSDate date]];
     NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", timestamp, line];
-    NSLog(@"[Moody Glow Tracker] %@", line);
+    MGLog(@"[Moody Glow Tracker] %@", line);
     
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:self.logFilePath];
     if (!fh) {
