@@ -334,36 +334,25 @@ static NSTimer *gPGColorTimer = nil;
     return layer;
 }
 
-- (CAShapeLayer *)createContraryBarWithColor:(UIColor *)color
-                                     isLeft:(BOOL)isLeft
-                                     bounds:(CGRect)bounds {
-    CGFloat barWidth = gPGGlowThickness;
-    CGFloat barHeight = bounds.size.height * 0.35;
-    CGFloat sideMargin = 30.0;
-
-    UIBezierPath *rect = [UIBezierPath bezierPathWithRoundedRect:
-                          CGRectMake(0, 0, barWidth, barHeight)
-                                                    cornerRadius:barWidth / 2.0];
+;
+- (CAShapeLayer *)createContrarySegmentLayerWithColor   :(UIColor *)color
+                                              bounds:(CGRect)bounds layer {
+    UIBezierPath *path = [self outline.shPathForBounds:bounds];
 
     CAShapeLayer *layer = [CAShapeLayer layer];
-    layer.path = rect.CGPath;
-    layer.fillColor = color.CGColor;
-    layer.strokeColor = [UIColor clearColor].CGColor;
-    layer.shadowColor = color.CGColor;
-    layer.shadowRadius = 12.0;
+    layer.path = path.CGPath;
+    layer.strokeColor = color.CGColor;
+    layer.fillColor = [UIColor clearColor].CGColor;
+    layer.lineWidth = gPGGlowThickness;
+    layer.lineCap = kCALineCapRound;
+    layer.lineJoin = kCALineJoinRound;
+    layer.shadowColor = color.CGadowRadius = 14.0;
     layer.shadowOpacity = 1.0;
     layer.shadowOffset = CGSizeZero;
+    layer.strokeStart = 0.0;
+    layer.strokeEnd = 0.15;
     layer.opacity = 1.0;
     layer.zPosition = 9999;
-
-    CGFloat xPos;
-    if (isLeft) {
-        xPos = sideMargin + barWidth / 2.0;
-    } else {
-        xPos = bounds.size.width - sideMargin - barWidth / 2.0;
-    }
-    layer.position = CGPointMake(xPos, barHeight / 2.0);
-
     return layer;
 }
 
@@ -444,26 +433,39 @@ static NSTimer *gPGColorTimer = nil;
                                 speed:(CGFloat)speed
                                isLeft:(BOOL)isLeft {
     if (speed < 0.1) speed = 0.1;
-    NSString *key = isLeft ? @"pg_contrary_left" : @"pg_contrary_right";
-    [layer removeAnimationForKey:key];
+    NSString *startKey = isLeft ? @"pg_contrary_left_start" : @"pg_contrary_right_start";
+    NSString *endKey   = isLeft ? @"pg_contrary_left_end"   : @"pg_contrary_right_end";
+    [layer removeAnimationForKey:startKey];
+    [layer removeAnimationForKey:endKey];
 
-    CGFloat barHeight = CGRectGetHeight(CGPathGetBoundingBox(layer.path));
-    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-    CFTimeInterval duration = 2.0 / speed;
+    CFTimeInterval duration = 3.0 / speed;
 
-    CABasicAnimation *move = [CABasicAnimation animationWithKeyPath:@"position.y"];
+    CABasicAnimation *startAnim = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
+    CABasicAnimation *endAnim   = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+
     if (isLeft) {
-        move.fromValue = @(barHeight / 2.0);
-        move.toValue = @(screenHeight - barHeight / 2.0);
+        // Clockwise
+        startAnim.fromValue = @0.0;
+        startAnim.toValue = @1.0;
+        endAnim.fromValue = @0.15;
+        endAnim.toValue = @1.15;
     } else {
-        move.fromValue = @(screenHeight - barHeight / 2.0);
-        move.toValue = @(barHeight / 2.0);
+        // Counter-clockwise (negative values wrap around)
+        startAnim.fromValue = @0.0;
+        startAnim.toValue = @-1.0;
+        endAnim.fromValue = @0.15;
+        endAnim.toValue = @-0.85;
     }
-    move.duration = duration;
-    move.autoreverses = YES;
-    move.repeatCount = HUGE_VALF;
-    move.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:move forKey:key];
+
+    startAnim.duration = duration;
+    startAnim.repeatCount = HUGE_VALF;
+    startAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:startAnim forKey:startKey];
+
+    endAnim.duration = duration;
+    endAnim.repeatCount = HUGE_VALF;
+    endAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:endAnim forKey:endKey];
 }
 
 - (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
@@ -613,8 +615,8 @@ static NSTimer *gPGColorTimer = nil;
         [host addSublayer:gPGLayer];
         [self startPendulumAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
     } else if (style == kMoodyStyleContrary) {
-        gPGLayer       = [self createContraryBarWithColor:color isLeft:YES bounds:bounds];
-        gPGSecondLayer = [self createContraryBarWithColor:color isLeft:NO  bounds:bounds];
+        gPGLayer       = [self createContrarySegmentLayerWithColor:color bounds:bounds];
+        gPGSecondLayer = [self createContrarySegmentLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
         [host addSublayer:gPGSecondLayer];
 
