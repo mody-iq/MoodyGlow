@@ -75,7 +75,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
     if (![prefs isEnabled]) {
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
-        [[MoodyGlowBlackout removeOverlayAnimated:NO];
+        [MoodyGlowBlackout removeOverlayAnimated:NO];
         return;
     }
 
@@ -242,7 +242,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     if (!locked) {
         NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
-        [[MoodyGlowBlackout removeOverlayAnimated:NO];
+        [MoodyGlowBlackout removeOverlayAnimated:NO];
         [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     }
 }
