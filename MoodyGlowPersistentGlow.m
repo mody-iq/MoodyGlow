@@ -314,7 +314,7 @@ static NSTimer *gPGColorTimer = nil;
 
 - (CAShapeLayer *)createPendulumLayerWithColor:(UIColor *)color bounds:(CGRect)bounds {
     CGFloat dotSize = MAX(gPGGlowThickness * 3.0, 20.0);
-    CGFloat yPos = bounds.size.height * 0.25;
+    CGFloat yPos = MAX(75.0, bounds.size.height * 0.09);
 
     UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:
                             CGRectMake(0, 0, dotSize, dotSize)];
