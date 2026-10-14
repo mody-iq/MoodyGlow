@@ -1,7 +1,7 @@
 // Moody Glow - Tweak.x
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Features: notification tracking, lock-aware glow, color cycling, glow thickness
+// Features: notification tracking, lock-aware glow, color cycling, custom colors
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -11,6 +11,7 @@
 #import "MoodyGlowColorExtractor.h"
 #import "MoodyGlowPrefs.h"
 #import "MoodyGlowSystemState.h"
+#import "MoodyGlowCustomColors.h"
 
 #pragma mark - Color Cache
 
@@ -27,6 +28,11 @@ static void moodyGlowInitColorCacheIfNeeded(void) {
 
 static UIColor *moodyGlowCachedColorForBundle(NSString *bundleID) {
     if (!bundleID || bundleID.length == 0) return nil;
+
+    // Custom color takes priority over icon color
+    UIColor *custom = [MoodyGlowCustomColors customColorForBundleID:bundleID];
+    if (custom) return custom;
+
     moodyGlowInitColorCacheIfNeeded();
 
     __block UIColor *cached = nil;
@@ -69,6 +75,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
     UIColor *fallback = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
 
+    // Static color mode: single color
     if ([prefs colorMode] == MoodyGlowColorModeStatic) {
         UIColor *single = [prefs staticColor];
         if (!single) single = fallback;
@@ -78,6 +85,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
+    // Icon color mode
     if (![prefs isColorCyclingEnabled] || bundleIDs.count == 1) {
         NSString *first = bundleIDs.firstObject;
         UIColor *c = moodyGlowCachedColorForBundle(first);
@@ -88,6 +96,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
+    // Icon color mode with cycling: full array (custom colors included via cache helper)
     NSMutableArray<UIColor *> *colors = [NSMutableArray arrayWithCapacity:bundleIDs.count];
     for (NSString *bundleID in bundleIDs) {
         UIColor *c = moodyGlowCachedColorForBundle(bundleID);
@@ -186,7 +195,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Dramatic + Thickness) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Custom Colors) ============");
     %init(iOS14Plus);
 
     moodyGlowInitColorCacheIfNeeded();
@@ -196,5 +205,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
 
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Dramatic color transition + thickness handler registered.");
+    NSLog(@"[Moody Glow] Custom-color handler registered.");
 }
