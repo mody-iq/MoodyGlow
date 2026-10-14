@@ -489,7 +489,6 @@ static NSTimer *gPGColorTimer = nil;
     [layer addAnimation:swing forKey:@"pg_pendulum"];
 }
 
-
 - (void)startContraryAnimationOnLayer:(CAShapeLayer *)layer
                                 speed:(CGFloat)speed
                                isLeft:(BOOL)isLeft {
@@ -676,14 +675,13 @@ static NSTimer *gPGColorTimer = nil;
         return;
     }
     gPGColorIndex = (gPGColorIndex + 1) % gPGColors.count;
-    [self applyColorAtIndex:gPGColorIndex animated:)YES];
+    [self applyColorAtIndex:gPGColorIndex animated:YES];
 }
 
-#pragma mark - Build / Te returnardown
+#pragma mark - Build / Teardown
 
-- (void);
-buildLayersOnHost:(CALayer *)host
-                   bounds:(   CGRect)bounds N
+- (void)buildLayersOnHost:(CALayer *)host
+                   bounds:(CGRect)bounds
                     color:(UIColor *)color
                     style:(NSInteger)style {
     if (style == kMoodyStyleSymmetric) {
@@ -798,7 +796,8 @@ buildLayersOnHost:(CALayer *)host
 #pragma mark - Watch Timer
 
 - (void)startWatchTimer {
-    if (gPGWatchTimerSTimer *t = [NSTimer timerWithTimeInterval:0.25
+    if (gPGWatchTimer) return;
+    NSTimer *t = [NSTimer timerWithTimeInterval:0.25
                                          target:self
                                        selector:@selector(watchTick)
                                        userInfo:nil
