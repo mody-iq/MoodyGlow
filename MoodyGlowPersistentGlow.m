@@ -1,6 +1,82 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
+#pragma mark - Path Length Helper
 
+typedef struct {
+    CGFloat length;
+    CGPoint lastPoint;
+    BOOL hasLastPoint;
+} MoodyPathLengthContext;
+
+static void moodyPathLengthCallback(void *info, const CGPathElement *element) {
+    MoodyPathLengthContext *ctx = (MoodyPathLengthContext *)info;
+    switch (element->type) {
+        case kCGPathElementMoveToPoint:
+            ctx->lastPoint = element->points[0];
+            ctx->hasLastPoint = YES;
+            break;
+        case kCGPathElementAddLineToPoint: {
+            CGPoint p = element->points[0];
+            if (ctx->hasLastPoint) {
+                ctx->length += hypot(p.x - ctx->lastPoint.x, p.y - ctx->lastPoint.y);
+            }
+            ctx->lastPoint = p;
+            break;
+        }
+        case kCGPathElementAddQuadCurveToPoint: {
+            CGPoint c = element->points[0];
+            CGPoint p = element->points[1];
+            if (ctx->hasLastPoint) {
+                CGPoint prev = ctx->lastPoint;
+                for (int i = 1; i <= 20; i++) {
+                    CGFloat t = i / 20.0;
+                    CGFloat mt = 1 - t;
+                    CGFloat x = mt*mt*prev.x + 2*mt*t*c.x + t*t*p.x;
+                    CGFloat y = mt*mt*prev.y + 2*mt*t*c.y + t*t*p.y;
+                    CGFloat pt = (i-1) / 20.0;
+                    CGFloat mpt = 1 - pt;
+                    CGFloat px = mpt*mpt*prev.x + 2*mpt*pt*c.x + pt*pt*p.x;
+                    CGFloat py = mpt*mpt*prev.y + 2*mpt*pt*c.y + pt*pt*p.y;
+                    ctx->length += hypot(x - px, y - py);
+                }
+            }
+            ctx->lastPoint = p;
+            break;
+        }
+        case kCGPathElementAddCurveToPoint: {
+            CGPoint c1 = element->points[0];
+            CGPoint c2 = element->points[1];
+            CGPoint p = element->points[2];
+            if (ctx->hasLastPoint) {
+                CGPoint prev = ctx->lastPoint;
+                for (int i = 1; i <= 20; i++) {
+                    CGFloat t = i / 20.0;
+                    CGFloat mt = 1 - t;
+                    CGFloat x = mt*mt*mt*prev.x + 3*mt*mt*t*c1.x + 3*mt*t*t*c2.x + t*t*t*p.x;
+                    CGFloat y = mt*mt*mt*prev.y + 3*mt*mt*t*c1.y + 3*mt*t*t*c2.y + t*t*t*p.y;
+                    CGFloat pt = (i-1) / 20.0;
+                    CGFloat mpt = 1 - pt;
+                    CGFloat px = mpt*mpt*mpt*prev.x + 3*mpt*mpt*pt*c1.x + 3*mpt*pt*pt*c2.x + pt*pt*pt*p.x;
+                    CGFloat py = mpt*mpt*mpt*prev.y + 3*mpt*mpt*pt*c1.y + 3*mpt*pt*pt*c2.y + pt*pt*pt*p.y;
+                    ctx->length += hypot(x - px, y - py);
+                }
+            }
+            ctx->lastPoint = p;
+            break;
+        }
+        case kCGPathElementCloseSubpath:
+            break;
+    }
+}
+
+static CGFloat moodyPathLength(CGPathRef path) {
+    if (!path) return 0;
+    MoodyPathLengthContext ctx = {0, CGPointZero, NO};
+    CGPathApply(path, &ctx, moodyPathLengthCallback);
+    return ctx.length;
+}
+
+@implementation MoodyGlowPersistentGlow
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 #import "MoodyGlowLog.h"
@@ -417,26 +493,38 @@ static NSTimer *gPGColorTimer = nil;
 
 #pragma mark - Animations
 
-- (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+- (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_breathe"];
+    [layer removeAnimationForKey:@"pg_lightbar_dash"];
 
-    CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    breathe.fromValue = @0.4;
-    breathe.toValue = @1.0;
-    breathe.duration = 0.7 / speed;
-    breathe.autoreverses = YES;
-    breathe.repeatCount = HUGE_VALF;
-    breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:breathe forKey:@"pg_breathe"];
+    CGFloat pathLen = moodyPathLength(layer.path);
+    if (pathLen <= 0) return;
+
+    CGFloat segment = pathLen * 0.15;
+    CGFloat gap = pathLen - segment;
+
+    layer.lineDashPattern = @[@(segment), @(gap)];
+    layer.lineDashPhase = 0;
+
+    CFTimeInterval duration = 2.5 / speed;
+
+    CABasicAnimation *dash = [CABasicAnimation animationWithKeyPath:@"lineDashPhase"];
+    dash.fromValue = @(0.0);
+    dash.toValue = @(pathLen);
+    dash.duration = duration;
+    dash.repeatCount = HUGE_VALF;
+    dash.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:dash forKey:@"pg_lightbar_dash"];
 }
 
 - (void)startSymmetricAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_symmetric"];
+    [layer removeAnimationForKey:@"pg_symmetric_draw"];
+    [layer removeAnimationForKey:@"pg_symmetric_fade"];
 
-    CFTimeInterval drawDuration = 1.2 / speed;
+    CFTimeInterval drawDuration = 1.6 / speed;
 
+    // Draw animation
     CABasicAnimation *draw = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
     draw.fromValue = @0.0;
     draw.toValue = @1.0;
@@ -444,7 +532,17 @@ static NSTimer *gPGColorTimer = nil;
     draw.autoreverses = YES;
     draw.repeatCount = HUGE_VALF;
     draw.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:draw forKey:@"pg_symmetric"];
+    [layer addAnimation:draw forKey:@"pg_symmetric_draw"];
+
+    // Add subtle fade to differentiate from Outline
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @0.7;
+    fade.toValue = @1.0;
+    fade.duration = drawDuration * 0.5;
+    fade.autoreverses = YES;
+    fade.repeatCount = HUGE_VALF;
+    fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:fade forKey:@"pg_symmetric_fade"];
 }
 
 - (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
@@ -492,32 +590,33 @@ static NSTimer *gPGColorTimer = nil;
                                 speed:(CGFloat)speed
                                isLeft:(BOOL)isLeft {
     if (speed < 0.1) speed = 0.1;
-    NSString *startKey = isLeft ? @"pg_contrary_left_start" : @"pg_contrary_right_start";
-    NSString *endKey   = isLeft ? @"pg_contrary_left_end"   : @"pg_contrary_right_end";
-    [layer removeAnimationForKey:startKey];
-    [layer removeAnimationForKey:endKey];
+    NSString *key = isLeft ? @"pg_contrary_left" : @"pg_contrary_right";
+    [layer removeAnimationForKey:key];
+
+    CGFloat pathLen = moodyPathLength(layer.path);
+    if (pathLen <= 0) return;
+
+    CGFloat segment = pathLen * 0.15;
+    CGFloat gap = pathLen - segment;
+
+    layer.lineDashPattern = @[@(segment), @(gap)];
+    layer.lineDashPhase = 0;
 
     CFTimeInterval duration = 3.0 / speed;
 
-    CABasicAnimation *startAnim = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
-    CABasicAnimation *endAnim   = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-
+    CABasicAnimation *dash = [CABasicAnimation animationWithKeyPath:@"lineDashPhase"];
     if (isLeft) {
-        startAnim.fromValue = @0.0;
-        startAnim.toValue = @1.0;
-        endAnim.fromValue = @0.15;
-        endAnim.toValue = @1.15;
+        dash.fromValue = @(0.0);
+        dash.toValue = @(pathLen);
     } else {
-        startAnim.fromValue = @0.0;
-        startAnim.toValue = @-1.0;
-        endAnim.fromValue = @0.15;
-        endAnim.toValue = @-0.85;
+        dash.fromValue = @(pathLen);
+        dash.toValue = @(0.0);
     }
-
-    startAnim.duration = duration;
-    startAnim.repeatCount = HUGE_VALF;
-    startAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [layer addAnimation:startAnim forKey:startKey];
+    dash.duration = duration;
+    dash.repeatCount = HUGE_VALF;
+    dash.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    [layer addAnimation:dash forKey:key];
+}
 
     endAnim.duration = duration;
     endAnim.repeatCount = HUGE_VALF;
@@ -612,15 +711,23 @@ static NSTimer *gPGColorTimer = nil;
     if (!layer) return;
     [layer removeAnimationForKey:@"pg_breathe"];
     [layer removeAnimationForKey:@"pg_symmetric"];
+    [layer removeAnimationForKey:@"pg_symmetric_draw"];
+    [layer removeAnimationForKey:@"pg_symmetric_fade"];
     [layer removeAnimationForKey:@"pg_lightbar_start"];
     [layer removeAnimationForKey:@"pg_lightbar_end"];
+    [layer removeAnimationForKey:@"pg_lightbar_dash"];
     [layer removeAnimationForKey:@"pg_pendulum"];
     [layer removeAnimationForKey:@"pg_contrary_left_start"];
     [layer removeAnimationForKey:@"pg_contrary_left_end"];
+    [layer removeAnimationForKey:@"pg_contrary_left"];
     [layer removeAnimationForKey:@"pg_contrary_right_start"];
     [layer removeAnimationForKey:@"pg_contrary_right_end"];
+    [layer removeAnimationForKey:@"pg_contrary_right"];
     [layer removeAnimationForKey:@"pg_particle"];
     [layer removeAnimationForKey:@"pg_particle_scale"];
+    // Reset dash pattern
+    layer.lineDashPattern = nil;
+    layer.lineDashPhase = 0;
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
@@ -729,10 +836,8 @@ static NSTimer *gPGColorTimer = nil;
 
         [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
         [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed];
-    } else if (style == kMoodyStyleLightBar) {
+} else if (style == kMoodyStyleLightBar) {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
-        gPGLayer.strokeStart = 0.0;
-        gPGLayer.strokeEnd = 0.15;
         gPGLayer.opacity = 1.0;
         gPGLayer.shadowRadius = 18.0;
         [host addSublayer:gPGLayer];
