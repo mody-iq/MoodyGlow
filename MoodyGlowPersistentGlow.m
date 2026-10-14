@@ -78,7 +78,10 @@ static CGFloat moodyPathLength(CGPathRef path) {
 
 @implementation MoodyGlowPersistentGlow
 #import "MoodyGlowPersistentGlow.h"
+#import <UIKit/UIKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <QuartzCore/QuartzCore.h>
+#import <math.h>
 #import "MoodyGlowLog.h"
 static const NSInteger kMoodyStyleContrary  = 0;
 static const NSInteger kMoodyStyleLightBar  = 1;
