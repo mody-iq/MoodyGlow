@@ -7,6 +7,7 @@
 static const NSInteger kMoodyStyleContrary  = 0;
 static const NSInteger kMoodyStyleLightBar  = 1;
 static const NSInteger kMoodyStyleOutline   = 2;
+static const NSInteger kMoodyStyleParticles = 3;
 static const NSInteger kMoodyStylePendulum  = 4;
 static const NSInteger kMoodyStyleSymmetric = 6;
 
@@ -20,6 +21,7 @@ static UIWindow *gPGWindow = nil;
 static __weak CALayer *gPGHostLayer = nil;
 static CAShapeLayer *gPGLayer = nil;
 static CAShapeLayer *gPGSecondLayer = nil;
+static NSMutableArray<CAShapeLayer *> *gPGParticlesArray = nil;
 static NSArray<UIColor *> *gPGColors = nil;
 static NSInteger gPGColorIndex = 0;
 static NSInteger gPGStyle = kMoodyStyleOutline;
@@ -194,6 +196,16 @@ static NSTimer *gPGColorTimer = nil;
     return host.layer;
 }
 
+#pragma mark - Helper: All Active Layers
+
+- (NSArray<CAShapeLayer *> *)allActiveLayers {
+    NSMutableArray<CAShapeLayer *> *arr = [NSMutableArray array];
+    if (gPGLayer) [arr addObject:gPGLayer];
+    if (gPGSecondLayer) [arr addObject:gPGSecondLayer];
+    if (gPGParticlesArray) [arr addObjectsFromArray:gPGParticlesArray];
+    return arr;
+}
+
 #pragma mark - Paths
 
 - (UIBezierPath *)outlinePathForBounds:(CGRect)bounds {
@@ -356,6 +368,58 @@ static NSTimer *gPGColorTimer = nil;
     return layer;
 }
 
+- (CAShapeLayer *)createParticleLayerWithColor:(UIColor *)color
+                                        center:(CGPoint)center
+                                          size:(CGFloat)size {
+    UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:
+                            CGRectMake(0, 0, size, size)];
+
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.path = circle.CGPath;
+    layer.position = center;
+    layer.fillColor = color.CGColor;
+    layer.strokeColor = [UIColor clearColor].CGColor;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 8.0;
+    layer.shadowOpacity = 0.9;
+    layer.shadowOffset = CGSizeZero;
+    layer.opacity = 0.0;
+    layer.zPosition = 9999;
+    return layer;
+}
+
+#pragma mark - Particles Layout
+
+- (NSArray<NSValue *> *)particlePositionsForBounds:(CGRect)bounds {
+    CGFloat w = bounds.size.width;
+    CGFloat notchWidth = 209.0;
+    CGFloat notchLeft = (w - notchWidth) / 2.0;
+    CGFloat notchRight = notchLeft + notchWidth;
+
+    // 10 particles clustered around the notch
+    return @[
+        // Left cluster (4)
+        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 20, 32)],
+        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 42, 48)],
+        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 12, 55)],
+        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 34, 68)],
+        // Right cluster (4) - mirrored
+        [NSValue valueWithCGPoint:CGPointMake(notchRight + 20, 32)],
+        [NSValue valueWithCGPoint:CGPointMake(notchRight + 42, 48)],
+        [NSValue valueWithCGPoint:CGPointMake(notchRight + 12, 55)],
+        [NSValue valueWithCGPoint:CGPointMake(notchRight + 34, 68)],
+        // Top-center (2)
+        [NSValue valueWithCGPoint:CGPointMake(w / 2.0 - 22, 45)],
+        [NSValue valueWithCGPoint:CGPointMake(w / 2.0 + 22, 45)]
+    ];
+}
+
+- (NSArray<NSNumber *> *)particleSizes {
+    return @[@22.0, @26.0, @18.0, @20.0,
+             @22.0, @26.0, @18.0, @20.0,
+             @20.0, @20.0];
+}
+
 #pragma mark - Animations
 
 - (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
@@ -419,9 +483,9 @@ static NSTimer *gPGColorTimer = nil;
     CFTimeInterval duration = 1.5 / speed;
     CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
 
-    CABasicAnimation *swing = [CABasicAnimation animationWithKeyPath:@"position.x"];
-    swing.fromValue = @(60.0);
-    swing.toValue = @(screenWidth - 60.0);
+    CABasicAnimation *swing = [CValueABasicAnimation animationWithKey =Path:@"position.x"];
+ @    swing.fromValue =1 @(60.0.);
+    swing15.toValue = @(screenWidth - 60.0);
     swing.duration = duration;
     swing.autoreverses = YES;
     swing.repeatCount = HUGE_VALF;
@@ -447,7 +511,7 @@ static NSTimer *gPGColorTimer = nil;
         startAnim.fromValue = @0.0;
         startAnim.toValue = @1.0;
         endAnim.fromValue = @0.15;
-        endAnim.toValue = @1.15;
+        endAnim.to;
     } else {
         startAnim.fromValue = @0.0;
         startAnim.toValue = @-1.0;
@@ -464,6 +528,39 @@ static NSTimer *gPGColorTimer = nil;
     endAnim.repeatCount = HUGE_VALF;
     endAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
     [layer addAnimation:endAnim forKey:endKey];
+}
+
+- (void)startParticleAnimationOnLayer:(CAShapeLayer *)layer
+                                index:(NSInteger)index
+                                speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_particle"];
+    [layer removeAnimationForKey:@"pg_particle_scale"];
+
+    // Different durations per particle for organic feel
+    CFTimeInterval baseDuration = (1.1 + (index % 4) * 0.25) / speed;
+
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @0.0;
+    fade.toValue = @1.0;
+    fade.duration = baseDuration;
+    fade.autoreverses = YES;
+    fade.repeatCount = HUGE_VALF;
+    fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    fade.beginTime = CACurrentMediaTime() + (index * 0.18);
+    fade.fillMode = kCAFillModeBoth;
+    [layer addAnimation:fade forKey:@"pg_particle"];
+
+    CABasicAnimation *scale = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    scale.fromValue = @0.55;
+    scale.toValue = @1.15;
+    scale.duration = baseDuration;
+    scale.autoreverses = YES;
+    scale.repeatCount = HUGE_VALF;
+    scale.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    scale.beginTime = CACurrentMediaTime() + (index * 0.18);
+    scale.fillMode = kCAFillModeBoth;
+    [layer addAnimation:scale forKey:@"pg_particle_scale"];
 }
 
 - (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
@@ -492,14 +589,14 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_contrary_left_end"];
     [layer removeAnimationForKey:@"pg_contrary_right_start"];
     [layer removeAnimationForKey:@"pg_contrary_right_end"];
+    [layer removeAnimationForKey:@"pg_particle"];
+    [layer removeAnimationForKey:@"pg_particle_scale"];
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
 
 - (void)applyColor:(UIColor *)color animated:(BOOL)animated {
-    NSArray<CAShapeLayer *> *layers = @[];
-    if (gPGLayer) layers = [layers arrayByAddingObject:gPGLayer];
-    if (gPGSecondLayer) layers = [layers arrayByAddingObject:gPGSecondLayer];
+    NSArray<CAShapeLayer *> *layers = [self allActiveLayers];
 
     for (CAShapeLayer *layer in layers) {
         if (animated) {
@@ -622,6 +719,21 @@ static NSTimer *gPGColorTimer = nil;
 
         [self startContraryAnimationOnLayer:gPGLayer       speed:gPGDrawSpeed isLeft:YES];
         [self startContraryAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed isLeft:NO];
+    } else if (style == kMoodyStyleParticles) {
+        gPGParticlesArray = [NSMutableArray array];
+        NSArray<NSValue *> *positions = [self particlePositionsForBounds:bounds];
+        NSArray<NSNumber *> *sizes = [self particleSizes];
+
+        for (NSInteger i = 0; i < (NSInteger)positions.count; i++) {
+            CGPoint center = [positions[i] CGPointValue];
+            CGFloat size = (i < (NSInteger)sizes.count) ? sizes[i].doubleValue : 20.0;
+            CAShapeLayer *particle = [self createParticleLayerWithColor:color
+                                                                 center:center
+                                                                   size:size];
+            [host addSublayer:particle];
+            [gPGParticlesArray addObject:particle];
+            [self startParticleAnimationOnLayer:particle index:i speed:gPGDrawSpeed];
+        }
     } else {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
@@ -640,6 +752,14 @@ static NSTimer *gPGColorTimer = nil;
         [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
         [gPGSecondLayer removeFromSuperlayer];
         gPGSecondLayer = nil;
+    }
+    if (gPGParticlesArray) {
+        for (CAShapeLayer *particle in gPGParticlesArray) {
+            [self removeAllStyleAnimationsFromLayer:particle];
+            [particle removeFromSuperlayer];
+        }
+        [gPGParticlesArray removeAllObjects];
+        gPGParticlesArray = nil;
     }
     gPGHostLayer = nil;
 }
@@ -709,8 +829,14 @@ static NSTimer *gPGColorTimer = nil;
     CALayer *host = [self resolveHostLayerBounds:&bounds source:&source];
     if (!host) return;
 
-    BOOL detached = (gPGLayer && gPGLayer.superlayer != host) ||
-                    (gPGSecondLayer && gPGSecondLayer.superlayer != host);
+    BOOL detached = NO;
+    if (gPGLayer && gPGLayer.superlayer != host) detached = YES;
+    if (gPGSecondLayer && gPGSecondLayer.superlayer != host) detached = YES;
+    if (gPGParticlesArray) {
+        for (CAShapeLayer *p in gPGParticlesArray) {
+            if (p.superlayer != host) { detached = YES; break; }
+        }
+    }
 
     if (host != gPGHostLayer || detached) {
         UIColor *current = gPGColors[gPGColorIndex];
@@ -761,13 +887,13 @@ static NSTimer *gPGColorTimer = nil;
         }
 
         BOOL hostChanged = (gPGHostLayer && gPGHostLayer != host);
-        BOOL styleChanged = ((gPGLayer || gPGSecondLayer) && gPGStyle != style);
+        BOOL styleChanged = ((gPGLayer || gPGSecondLayer || gPGParticlesArray) && gPGStyle != style);
 
         if (hostChanged || styleChanged) {
             [self teardownLayers];
         }
 
-        if (!gPGLayer && !gPGSecondLayer) {
+        if (!gPGLayer && !gPGSecondLayer && !gPGParticlesArray) {
             UIColor *initial = gPGColors[gPGColorIndex];
             [self buildLayersOnHost:host bounds:bounds color:initial style:style];
             gPGStyle = style;
@@ -808,7 +934,7 @@ static NSTimer *gPGColorTimer = nil;
         [self cancelBannerTimer];
         [self cancelColorTimer];
 
-        if (!gPGLayer && !gPGSecondLayer) {
+        if (!gPGLayer && !gPGSecondLayer && !gPGParticlesArray) {
             gPGActive = NO;
             gPGColors = nil;
             gPGColorIndex = 0;
@@ -818,6 +944,11 @@ static NSTimer *gPGColorTimer = nil;
         NSMutableArray<CAShapeLayer *> *layers = [NSMutableArray array];
         if (gPGLayer) { [layers addObject:gPGLayer]; gPGLayer = nil; }
         if (gPGSecondLayer) { [layers addObject:gPGSecondLayer]; gPGSecondLayer = nil; }
+        if (gPGParticlesArray) {
+            [layers addObjectsFromArray:gPGParticlesArray];
+            [gPGParticlesArray removeAllObjects];
+            gPGParticlesArray = nil;
+        }
         gPGColors = nil;
         gPGColorIndex = 0;
         gPGHostLayer = nil;
@@ -879,6 +1010,14 @@ static NSTimer *gPGColorTimer = nil;
         if (gPGSecondLayer && gPGActive) {
             [self removeAllStyleAnimationsFromLayer:gPGSecondLayer];
             [self startAnimationForStyle:gPGStyle layer:gPGSecondLayer];
+        }
+        if (gPGParticlesArray && gPGActive) {
+            NSInteger i = 0;
+            for (CAShapeLayer *particle in gPGParticlesArray) {
+                [self removeAllStyleAnimationsFromLayer:particle];
+                [self startParticleAnimationOnLayer:particle index:i speed:speed];
+                i++;
+            }
         }
     });
 }
