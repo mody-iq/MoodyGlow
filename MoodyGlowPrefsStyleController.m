@@ -27,7 +27,6 @@ static NSString * const kMoodyStyleIndexKey = @"moodyStyleIndex";
             @"Outline",
             @"Particles",
             @"Pendulum",
-            @"Pulse",
             @"Symmetric"
         ];
         
