@@ -392,28 +392,27 @@ static NSTimer *gPGColorTimer = nil;
 
 - (NSArray<NSValue *> *)particlePositionsForBounds:(CGRect)bounds {
     CGFloat w = bounds.size.width;
-    CGFloat notchWidth = 209.0;
-    CGFloat notchLeft = (w - notchWidth) / 2.0;
-    CGFloat notchRight = notchLeft + notchWidth;
+    CGFloat centerX = w / 2.0;
+    CGFloat baseY = 50.0;
 
     return @[
-        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 20, 32)],
-        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 42, 48)],
-        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 12, 55)],
-        [NSValue valueWithCGPoint:CGPointMake(notchLeft - 34, 68)],
-        [NSValue valueWithCGPoint:CGPointMake(notchRight + 20, 32)],
-        [NSValue valueWithCGPoint:CGPointMake(notchRight + 42, 48)],
-        [NSValue valueWithCGPoint:CGPointMake(notchRight + 12, 55)],
-        [NSValue valueWithCGPoint:CGPointMake(notchRight + 34, 68)],
-        [NSValue valueWithCGPoint:CGPointMake(w / 2.0 - 22, 45)],
-        [NSValue valueWithCGPoint:CGPointMake(w / 2.0 + 22, 45)]
+        [NSValue valueWithCGPoint:CGPointMake(centerX - 4,  baseY)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX + 4,  baseY)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX - 8,  baseY + 3)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX + 8,  baseY + 3)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX - 2,  baseY - 4)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX + 2,  baseY - 4)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX - 12, baseY - 2)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX + 12, baseY - 2)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX,      baseY + 5)],
+        [NSValue valueWithCGPoint:CGPointMake(centerX,      baseY - 6)]
     ];
 }
 
 - (NSArray<NSNumber *> *)particleSizes {
-    return @[@22.0, @26.0, @18.0, @20.0,
-             @22.0, @26.0, @18.0, @20.0,
-             @20.0, @20.0];
+    return @[@28.0, @32.0, @26.0, @30.0,
+             @28.0, @32.0, @26.0, @30.0,
+             @24.0, @24.0];
 }
 
 #pragma mark - Animations
@@ -530,30 +529,66 @@ static NSTimer *gPGColorTimer = nil;
                                 index:(NSInteger)index
                                 speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_particle"];
+    [layer removeAnimationForKey:@"pg_particle_fade"];
+    [layer removeAnimationForKey:@"pg_particle_move"];
     [layer removeAnimationForKey:@"pg_particle_scale"];
 
-    CFTimeInterval baseDuration = (1.1 + (index % 4) * 0.25) / speed;
+    // Stagger: each particle starts a bit later than the previous one
+    CFTimeInterval stagger = index * 0.22;
+    CFTimeInterval duration = 1.6 / speed;
 
-    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    fade.fromValue = @0.0;
-    fade.toValue = @1.0;
-    fade.duration = baseDuration;
-    fade.autoreverses = YES;
+    // Outward direction: distribute particles around a circle
+    NSArray<NSValue *> *directions = @[
+        [NSValue valueWithCGPoint:CGPointMake(-70, 10)],   // 0 → left
+        [NSValue valueWithCGPoint:CGPointMake(70, 10)],    // 1 → right
+        [NSValue valueWithCGPoint:CGPointMake(-50, 30)],   // 2 → lower-left
+        [NSValue valueWithCGPoint:CGPointMake(50, 30)],    // 3 → lower-right
+        [NSValue valueWithCGPoint:CGPointMake(-30, -20)],  // 4 → upper-left
+        [NSValue valueWithCGPoint:CGPointMake(30, -20)],   // 5 → upper-right
+        [NSValue valueWithCGPoint:CGPointMake(-80, -5)],   // 6 → far left
+        [NSValue valueWithCGPoint:CGPointMake(80, -5)],    // 7 → far right
+        [NSValue valueWithCGPoint:CGPointMake(0, 40)],     // 8 → downward
+        [NSValue valueWithCGPoint:CGPointMake(0, -30)]     // 9 → upward
+    ];
+
+    CGPoint basePosition = layer.position;
+    CGPoint offset = CGPointMake(0, 0);
+    if (index < (NSInteger)directions.count) {
+        offset = [directions[index] CGPointValue];
+    }
+    CGPoint endPosition = CGPointMake(basePosition.x + offset.x,
+                                      basePosition.y + offset.y);
+
+    // 1) Movement: drift outward
+    CABasicAnimation *move = [CABasicAnimation animationWithKeyPath:@"position"];
+    move.fromValue = [NSValue valueWithCGPoint:basePosition];
+    move.toValue = [NSValue valueWithCGPoint:endPosition];
+    move.duration = duration;
+    move.repeatCount = HUGE_VALF;
+    move.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+    move.beginTime = CACurrentMediaTime() + stagger;
+    move.fillMode = kCAFillModeBoth;
+    [layer addAnimation:move forKey:@"pg_particle_move"];
+
+    // 2) Fade: appear → stay → disappear
+    CAKeyframeAnimation *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+    fade.values = @[@0.0, @0.95, @0.95, @0.0];
+    fade.keyTimes = @[@0.0, @0.25, @0.65, @1.0];
+    fade.duration = duration;
     fade.repeatCount = HUGE_VALF;
     fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    fade.beginTime = CACurrentMediaTime() + (index * 0.18);
+    fade.beginTime = CACurrentMediaTime() + stagger;
     fade.fillMode = kCAFillModeBoth;
-    [layer addAnimation:fade forKey:@"pg_particle"];
+    [layer addAnimation:fade forKey:@"pg_particle_fade"];
 
-    CABasicAnimation *scale = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
-    scale.fromValue = @0.55;
-    scale.toValue = @1.15;
-    scale.duration = baseDuration;
-    scale.autoreverses = YES;
+    // 3) Scale: small → large → small (subtle)
+    CAKeyframeAnimation *scale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+    scale.values = @[@0.55, @1.10, @0.90, @0.55];
+    scale.keyTimes = @[@0.0, @0.35, @0.75, @1.0];
+    scale.duration = duration;
     scale.repeatCount = HUGE_VALF;
     scale.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    scale.beginTime = CACurrentMediaTime() + (index * 0.18);
+    scale.beginTime = CACurrentMediaTime() + stagger;
     scale.fillMode = kCAFillModeBoth;
     [layer addAnimation:scale forKey:@"pg_particle_scale"];
 }
