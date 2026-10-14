@@ -74,6 +74,13 @@
         NSString *bundleID = [proxy performSelector:bidSel];
         if (!bundleID || bundleID.length == 0) continue;
         if ([seen containsObject:bundleID]) continue;
+
+        // Skip Apple system apps/bundles entirely
+        if ([bundleID hasPrefix:@"com.apple."]) continue;
+        // Skip internal service bundles
+        if ([bundleID containsString:@".PushBundle."]) continue;
+        if ([bundleID containsString:@".WebKit."]) continue;
+
         [seen addObject:bundleID];
 
         SEL nameSel = NSSelectorFromString(@"localizedName");
