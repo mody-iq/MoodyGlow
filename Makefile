@@ -5,14 +5,14 @@ THEOS_PACKAGE_SCHEME = roothide
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = MoodyGlow
-MoodyGlow_FILES = Tweak.x MoodyGlowAnimations.m MoodyGlowBlackout.m MoodyGlowSystemState.m MoodyGlowColorExtractor.m MoodyGlowPrefs.m MoodyGlowLocalization.m MoodyGlowNotificationTracker.m MoodyGlowPersistentGlow.m
+MoodyGlow_FILES = Tweak.x MoodyGlowAnimations.m MoodyGlowBlackout.m MoodyGlowSystemState.m MoodyGlowColorExtractor.m MoodyGlowPrefs.m MoodyGlowLocalization.m MoodyGlowNotificationTracker.m MoodyGlowPersistentGlow.m MoodyGlowCustomColors.m
 MoodyGlow_CFLAGS = -fobjc-arc
 MoodyGlow_FRAMEWORKS = UIKit CoreImage
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 BUNDLE_NAME = MoodyGlowPrefs
-MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m MoodyGlowPrefsStyleController.m MoodyGlowHeaderView.m MoodyGlowPrefs.m MoodyGlowLocalization.m
+MoodyGlowPrefs_FILES = MoodyGlowPrefsRootListController.m MoodyGlowPrefsAnimationsController.m MoodyGlowPrefsStyleController.m MoodyGlowPrefsCustomColorsController.m MoodyGlowHeaderView.m MoodyGlowPrefs.m MoodyGlowLocalization.m MoodyGlowCustomColors.m
 MoodyGlowPrefs_INSTALL_PATH = /Library/PreferenceBundles
 MoodyGlowPrefs_CFLAGS = -fobjc-arc
 MoodyGlowPrefs_LDFLAGS = -undefined dynamic_lookup
@@ -21,4 +21,3 @@ include $(THEOS_MAKE_PATH)/bundle.mk
 
 after-install::
 	install.exec "killall -9 SpringBoard"
-
