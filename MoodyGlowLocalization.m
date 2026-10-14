@@ -78,8 +78,8 @@
             @"Choose Static Color": @"Choose Static Color",
             @"COLOR CYCLING": @"COLOR CYCLING",
             @"Color Cycling": @"Color Cycling",
-            @"Color Cycling Footer": @"Cycle through app colors when multiple apps have notifications",
-            @"Test animation": @"Test animation"
+            @"Color Cycling Footer": @"Cycle through app colors when multiple apps have @"Test animation": @"Test animation",
+            @"Custom App Colors": @"Custom App Colors"
         };
     });
     return dict;
@@ -135,8 +135,8 @@
             @"Choose Static Color": @"اختر لوناً ثابتاً",
             @"COLOR CYCLING": @"تبديل الألوان",
             @"Color Cycling": @"تبديل الألوان",
-            @"Color Cycling Footer": @"التنقل بين ألوان التطبيقات عندما يكون هناك إشعارات من تطبيقات متعددة",
-            @"Test animation": @"تجربة الرسم"
+            @"Color Cycling Footer": @"التنقل بين ألوان التطبيقات عندما يكون هناك إشعارات من تطبيقات @"Test animation": @"تجربة الرسم",
+            @"Custom App Colors": @"ألوان التطبيقات المخصصة"
         };
     });
     return dict;
