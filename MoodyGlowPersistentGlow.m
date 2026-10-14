@@ -1,5 +1,41 @@
 // Moody Glow - Persistent Glow Engine Implementation
 // Developer: Moody
+
+#import "MoodyGlowPersistentGlow.h"
+#import <UIKit/UIKit.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <QuartzCore/QuartzCore.h>
+#import <math.h>
+
+static const NSInteger kMoodyStyleContrary  = 0;
+static const NSInteger kMoodyStyleLightBar  = 1;
+static const NSInteger kMoodyStyleOutline   = 2;
+static const NSInteger kMoodyStyleParticles = 3;
+static const NSInteger kMoodyStylePendulum  = 4;
+static const NSInteger kMoodyStyleSymmetric = 6;
+
+static const NSTimeInterval kMoodyBannerDuration = 7.0;
+static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
+static const NSTimeInterval kMoodyDramaticDuration = 1.2;
+
+static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
+
+static UIWindow *gPGWindow = nil;
+static __weak CALayer *gPGHostLayer = nil;
+static CAShapeLayer *gPGLayer = nil;
+static CAShapeLayer *gPGSecondLayer = nil;
+static NSMutableArray<CAShapeLayer *> *gPGParticlesArray = nil;
+static NSArray<UIColor *> *gPGColors = nil;
+static NSInteger gPGColorIndex = 0;
+static NSInteger gPGStyle = kMoodyStyleOutline;
+static BOOL gPGActive = NO;
+static CGFloat gPGBreathingSpeed = 1.0;
+static CGFloat gPGDrawSpeed = 1.0;
+static CGFloat gPGGlowThickness = 6.0;
+static NSTimer *gPGWatchTimer = nil;
+static NSTimer *gPGBannerTimer = nil;
+static NSTimer *gPGColorTimer = nil;
+
 #pragma mark - Path Length Helper
 
 typedef struct {
@@ -77,42 +113,6 @@ static CGFloat moodyPathLength(CGPathRef path) {
 }
 
 @implementation MoodyGlowPersistentGlow
-#import "MoodyGlowPersistentGlow.h"
-#import <UIKit/UIKit.h>
-#import <CoreGraphics/CoreGraphics.h>
-#import <QuartzCore/QuartzCore.h>
-#import <math.h>
-#import "MoodyGlowLog.h"
-static const NSInteger kMoodyStyleContrary  = 0;
-static const NSInteger kMoodyStyleLightBar  = 1;
-static const NSInteger kMoodyStyleOutline   = 2;
-static const NSInteger kMoodyStyleParticles = 3;
-static const NSInteger kMoodyStylePendulum  = 4;
-static const NSInteger kMoodyStyleSymmetric = 6;
-
-static const NSTimeInterval kMoodyBannerDuration = 7.0;
-static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
-static const NSTimeInterval kMoodyDramaticDuration = 1.2;
-
-static NSString * const kPGLogPath = @"/var/mobile/Documents/MoodyGlow.log";
-
-static UIWindow *gPGWindow = nil;
-static __weak CALayer *gPGHostLayer = nil;
-static CAShapeLayer *gPGLayer = nil;
-static CAShapeLayer *gPGSecondLayer = nil;
-static NSMutableArray<CAShapeLayer *> *gPGParticlesArray = nil;
-static NSArray<UIColor *> *gPGColors = nil;
-static NSInteger gPGColorIndex = 0;
-static NSInteger gPGStyle = kMoodyStyleOutline;
-static BOOL gPGActive = NO;
-static CGFloat gPGBreathingSpeed = 1.0;
-static CGFloat gPGDrawSpeed = 1.0;
-static CGFloat gPGGlowThickness = 6.0;
-static NSTimer *gPGWatchTimer = nil;
-static NSTimer *gPGBannerTimer = nil;
-static NSTimer *gPGColorTimer = nil;
-
-@implementation MoodyGlowPersistentGlow
 
 + (instancetype)sharedInstance {
     static MoodyGlowPersistentGlow *shared = nil;
@@ -131,7 +131,7 @@ static NSTimer *gPGColorTimer = nil;
     fmt.dateFormat = @"HH:mm:ss";
     NSString *entry = [NSString stringWithFormat:@"[%@] [PG] %@\n",
                        [fmt stringFromDate:[NSDate date]], msg];
-    MGLog(@"[Moody Glow PG] %@", msg);
+    NSLog(@"[Moody Glow PG] %@", msg);
 
     NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kPGLogPath];
     if (!fh) {
@@ -440,8 +440,6 @@ static NSTimer *gPGColorTimer = nil;
     layer.shadowRadius = 14.0;
     layer.shadowOpacity = 1.0;
     layer.shadowOffset = CGSizeZero;
-    layer.strokeStart = 0.0;
-    layer.strokeEnd = 0.15;
     layer.opacity = 1.0;
     layer.zPosition = 9999;
     return layer;
@@ -496,6 +494,46 @@ static NSTimer *gPGColorTimer = nil;
 
 #pragma mark - Animations
 
+- (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_breathe"];
+
+    CABasicAnimation *breathe = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    breathe.fromValue = @0.4;
+    breathe.toValue = @1.0;
+    breathe.duration = 0.7 / speed;
+    breathe.autoreverses = YES;
+    breathe.repeatCount = HUGE_VALF;
+    breathe.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:breathe forKey:@"pg_breathe"];
+}
+
+- (void)startSymmetricAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_symmetric_draw"];
+    [layer removeAnimationForKey:@"pg_symmetric_fade"];
+
+    CFTimeInterval drawDuration = 1.6 / speed;
+
+    CABasicAnimation *draw = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+    draw.fromValue = @0.0;
+    draw.toValue = @1.0;
+    draw.duration = drawDuration;
+    draw.autoreverses = YES;
+    draw.repeatCount = HUGE_VALF;
+    draw.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:draw forKey:@"pg_symmetric_draw"];
+
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @0.7;
+    fade.toValue = @1.0;
+    fade.duration = drawDuration * 0.5;
+    fade.autoreverses = YES;
+    fade.repeatCount = HUGE_VALF;
+    fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:fade forKey:@"pg_symmetric_fade"];
+}
+
 - (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     [layer removeAnimationForKey:@"pg_lightbar_dash"];
@@ -518,58 +556,6 @@ static NSTimer *gPGColorTimer = nil;
     dash.repeatCount = HUGE_VALF;
     dash.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
     [layer addAnimation:dash forKey:@"pg_lightbar_dash"];
-}
-
-- (void)startSymmetricAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_symmetric_draw"];
-    [layer removeAnimationForKey:@"pg_symmetric_fade"];
-
-    CFTimeInterval drawDuration = 1.6 / speed;
-
-    // Draw animation
-    CABasicAnimation *draw = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-    draw.fromValue = @0.0;
-    draw.toValue = @1.0;
-    draw.duration = drawDuration;
-    draw.autoreverses = YES;
-    draw.repeatCount = HUGE_VALF;
-    draw.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:draw forKey:@"pg_symmetric_draw"];
-
-    // Add subtle fade to differentiate from Outline
-    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
-    fade.fromValue = @0.7;
-    fade.toValue = @1.0;
-    fade.duration = drawDuration * 0.5;
-    fade.autoreverses = YES;
-    fade.repeatCount = HUGE_VALF;
-    fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-    [layer addAnimation:fade forKey:@"pg_symmetric_fade"];
-}
-
-- (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
-    if (speed < 0.1) speed = 0.1;
-    [layer removeAnimationForKey:@"pg_lightbar_start"];
-    [layer removeAnimationForKey:@"pg_lightbar_end"];
-
-    CFTimeInterval duration = 2.5 / speed;
-
-    CABasicAnimation *startAnim = [CABasicAnimation animationWithKeyPath:@"strokeStart"];
-    startAnim.fromValue = @0.0;
-    startAnim.toValue = @1.0;
-    startAnim.duration = duration;
-    startAnim.repeatCount = HUGE_VALF;
-    startAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [layer addAnimation:startAnim forKey:@"pg_lightbar_start"];
-
-    CABasicAnimation *endAnim = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-    endAnim.fromValue = @0.15;
-    endAnim.toValue = @1.15;
-    endAnim.duration = duration;
-    endAnim.repeatCount = HUGE_VALF;
-    endAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [layer addAnimation:endAnim forKey:@"pg_lightbar_end"];
 }
 
 - (void)startPendulumAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
@@ -621,12 +607,6 @@ static NSTimer *gPGColorTimer = nil;
     [layer addAnimation:dash forKey:key];
 }
 
-    endAnim.duration = duration;
-    endAnim.repeatCount = HUGE_VALF;
-    endAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    [layer addAnimation:endAnim forKey:endKey];
-}
-
 - (void)startParticleAnimationOnLayer:(CAShapeLayer *)layer
                                 index:(NSInteger)index
                                 speed:(CGFloat)speed {
@@ -635,22 +615,20 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_particle_move"];
     [layer removeAnimationForKey:@"pg_particle_scale"];
 
-    // Stagger: each particle starts a bit later than the previous one
     CFTimeInterval stagger = index * 0.22;
     CFTimeInterval duration = 1.6 / speed;
 
-    // Outward direction: distribute particles around a circle
     NSArray<NSValue *> *directions = @[
-        [NSValue valueWithCGPoint:CGPointMake(-70, 10)],   // 0 → left
-        [NSValue valueWithCGPoint:CGPointMake(70, 10)],    // 1 → right
-        [NSValue valueWithCGPoint:CGPointMake(-50, 30)],   // 2 → lower-left
-        [NSValue valueWithCGPoint:CGPointMake(50, 30)],    // 3 → lower-right
-        [NSValue valueWithCGPoint:CGPointMake(-30, -20)],  // 4 → upper-left
-        [NSValue valueWithCGPoint:CGPointMake(30, -20)],   // 5 → upper-right
-        [NSValue valueWithCGPoint:CGPointMake(-80, -5)],   // 6 → far left
-        [NSValue valueWithCGPoint:CGPointMake(80, -5)],    // 7 → far right
-        [NSValue valueWithCGPoint:CGPointMake(0, 40)],     // 8 → downward
-        [NSValue valueWithCGPoint:CGPointMake(0, -30)]     // 9 → upward
+        [NSValue valueWithCGPoint:CGPointMake(-70, 10)],
+        [NSValue valueWithCGPoint:CGPointMake(70, 10)],
+        [NSValue valueWithCGPoint:CGPointMake(-50, 30)],
+        [NSValue valueWithCGPoint:CGPointMake(50, 30)],
+        [NSValue valueWithCGPoint:CGPointMake(-30, -20)],
+        [NSValue valueWithCGPoint:CGPointMake(30, -20)],
+        [NSValue valueWithCGPoint:CGPointMake(-80, -5)],
+        [NSValue valueWithCGPoint:CGPointMake(80, -5)],
+        [NSValue valueWithCGPoint:CGPointMake(0, 40)],
+        [NSValue valueWithCGPoint:CGPointMake(0, -30)]
     ];
 
     CGPoint basePosition = layer.position;
@@ -661,7 +639,6 @@ static NSTimer *gPGColorTimer = nil;
     CGPoint endPosition = CGPointMake(basePosition.x + offset.x,
                                       basePosition.y + offset.y);
 
-    // 1) Movement: drift outward
     CABasicAnimation *move = [CABasicAnimation animationWithKeyPath:@"position"];
     move.fromValue = [NSValue valueWithCGPoint:basePosition];
     move.toValue = [NSValue valueWithCGPoint:endPosition];
@@ -672,7 +649,6 @@ static NSTimer *gPGColorTimer = nil;
     move.fillMode = kCAFillModeBoth;
     [layer addAnimation:move forKey:@"pg_particle_move"];
 
-    // 2) Fade: appear → stay → disappear
     CAKeyframeAnimation *fade = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
     fade.values = @[@0.0, @0.95, @0.95, @0.0];
     fade.keyTimes = @[@0.0, @0.25, @0.65, @1.0];
@@ -683,7 +659,6 @@ static NSTimer *gPGColorTimer = nil;
     fade.fillMode = kCAFillModeBoth;
     [layer addAnimation:fade forKey:@"pg_particle_fade"];
 
-    // 3) Scale: small → large → small (subtle)
     CAKeyframeAnimation *scale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
     scale.values = @[@0.55, @1.10, @0.90, @0.55];
     scale.keyTimes = @[@0.0, @0.35, @0.75, @1.0];
@@ -727,8 +702,9 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_contrary_right_end"];
     [layer removeAnimationForKey:@"pg_contrary_right"];
     [layer removeAnimationForKey:@"pg_particle"];
+    [layer removeAnimationForKey:@"pg_particle_fade"];
+    [layer removeAnimationForKey:@"pg_particle_move"];
     [layer removeAnimationForKey:@"pg_particle_scale"];
-    // Reset dash pattern
     layer.lineDashPattern = nil;
     layer.lineDashPhase = 0;
 }
@@ -839,7 +815,7 @@ static NSTimer *gPGColorTimer = nil;
 
         [self startSymmetricAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
         [self startSymmetricAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed];
-} else if (style == kMoodyStyleLightBar) {
+    } else if (style == kMoodyStyleLightBar) {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
         gPGLayer.opacity = 1.0;
         gPGLayer.shadowRadius = 18.0;
