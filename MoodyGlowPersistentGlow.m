@@ -396,19 +396,15 @@ static NSTimer *gPGColorTimer = nil;
     CGFloat notchLeft = (w - notchWidth) / 2.0;
     CGFloat notchRight = notchLeft + notchWidth;
 
-    // 10 particles clustered around the notch
     return @[
-        // Left cluster (4)
         [NSValue valueWithCGPoint:CGPointMake(notchLeft - 20, 32)],
         [NSValue valueWithCGPoint:CGPointMake(notchLeft - 42, 48)],
         [NSValue valueWithCGPoint:CGPointMake(notchLeft - 12, 55)],
         [NSValue valueWithCGPoint:CGPointMake(notchLeft - 34, 68)],
-        // Right cluster (4) - mirrored
         [NSValue valueWithCGPoint:CGPointMake(notchRight + 20, 32)],
         [NSValue valueWithCGPoint:CGPointMake(notchRight + 42, 48)],
         [NSValue valueWithCGPoint:CGPointMake(notchRight + 12, 55)],
         [NSValue valueWithCGPoint:CGPointMake(notchRight + 34, 68)],
-        // Top-center (2)
         [NSValue valueWithCGPoint:CGPointMake(w / 2.0 - 22, 45)],
         [NSValue valueWithCGPoint:CGPointMake(w / 2.0 + 22, 45)]
     ];
@@ -483,15 +479,16 @@ static NSTimer *gPGColorTimer = nil;
     CFTimeInterval duration = 1.5 / speed;
     CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
 
-    CABasicAnimation *swing = [CValueABasicAnimation animationWithKey =Path:@"position.x"];
- @    swing.fromValue =1 @(60.0.);
-    swing15.toValue = @(screenWidth - 60.0);
+    CABasicAnimation *swing = [CABasicAnimation animationWithKeyPath:@"position.x"];
+    swing.fromValue = @(60.0);
+    swing.toValue = @(screenWidth - 60.0);
     swing.duration = duration;
     swing.autoreverses = YES;
     swing.repeatCount = HUGE_VALF;
     swing.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
     [layer addAnimation:swing forKey:@"pg_pendulum"];
 }
+
 
 - (void)startContraryAnimationOnLayer:(CAShapeLayer *)layer
                                 speed:(CGFloat)speed
@@ -511,7 +508,7 @@ static NSTimer *gPGColorTimer = nil;
         startAnim.fromValue = @0.0;
         startAnim.toValue = @1.0;
         endAnim.fromValue = @0.15;
-        endAnim.to;
+        endAnim.toValue = @1.15;
     } else {
         startAnim.fromValue = @0.0;
         startAnim.toValue = @-1.0;
@@ -537,7 +534,6 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_particle"];
     [layer removeAnimationForKey:@"pg_particle_scale"];
 
-    // Different durations per particle for organic feel
     CFTimeInterval baseDuration = (1.1 + (index % 4) * 0.25) / speed;
 
     CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
@@ -680,13 +676,14 @@ static NSTimer *gPGColorTimer = nil;
         return;
     }
     gPGColorIndex = (gPGColorIndex + 1) % gPGColors.count;
-    [self applyColorAtIndex:gPGColorIndex animated:YES];
+    [self applyColorAtIndex:gPGColorIndex animated:)YES];
 }
 
-#pragma mark - Build / Teardown
+#pragma mark - Build / Te returnardown
 
-- (void)buildLayersOnHost:(CALayer *)host
-                   bounds:(CGRect)bounds
+- (void);
+buildLayersOnHost:(CALayer *)host
+                   bounds:(   CGRect)bounds N
                     color:(UIColor *)color
                     style:(NSInteger)style {
     if (style == kMoodyStyleSymmetric) {
@@ -801,8 +798,7 @@ static NSTimer *gPGColorTimer = nil;
 #pragma mark - Watch Timer
 
 - (void)startWatchTimer {
-    if (gPGWatchTimer) return;
-    NSTimer *t = [NSTimer timerWithTimeInterval:0.25
+    if (gPGWatchTimerSTimer *t = [NSTimer timerWithTimeInterval:0.25
                                          target:self
                                        selector:@selector(watchTick)
                                        userInfo:nil
