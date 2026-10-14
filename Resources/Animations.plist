@@ -128,6 +128,16 @@
         </dict>
         <dict>
             <key>cell</key>
+            <string>PSLinkCell</string>
+            <key>label</key>
+            <string>Custom App Colors</string>
+            <key>detail</key>
+            <string>MoodyGlowPrefsCustomColorsController</string>
+            <key>isController</key>
+            <true/>
+        </dict>
+        <dict>
+            <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
             <string>COLOR CYCLING</string>
