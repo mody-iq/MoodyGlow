@@ -289,10 +289,13 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center,
 - (void)_setUILocked:(BOOL)locked {
     %orig;
 
+    // Update cached lock state
+    [MoodyGlowSystemState setCachedLocked:locked];
+
     if (!locked) {
-        MGLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
+        NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
-        [MoodyGlowBlackout removeOverlayAnimated:NO];
+        [[MoodyGlowBlackout removeOverlayAnimated:NO];
         [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     }
 }
@@ -303,10 +306,13 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center,
 
 // --- Tweak Initialization ---
 %ctor {
-    MGLog(@"[Moody Glow] ============ TWEAK LOADED (Blackout Active) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Lock State Cache) ============");
     %init(iOS14Plus);
 
     moodyGlowInitColorCacheIfNeeded();
+
+    // Initialize lock state cache from the system
+    [MoodyGlowSystemState refreshFromSystem];
 
     [[MoodyGlowNotificationTracker sharedInstance] setChangeHandler:^(NSInteger count, NSArray<NSString *> *bundleIDs) {
         moodyGlowRefreshPersistentGlow(count, bundleIDs);
