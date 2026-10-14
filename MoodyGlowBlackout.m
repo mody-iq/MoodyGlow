@@ -3,6 +3,7 @@
 // Purpose: Manage black overlay + screen wake/sleep for Blackout feature
 
 #import "MoodyGlowBlackout.h"
+#import "MoodyGlowLog.h"
 #import <objc/runtime.h>
 
 static UIView *gBlackoutOverlay = nil;
@@ -35,7 +36,7 @@ static UIView *gBlackoutOverlay = nil;
             overlay.alpha = 1.0;
         }];
         
-        NSLog(@"[Moody Glow] Blackout overlay shown.");
+        MGLog(@"[Moody Glow] Blackout overlay shown.");
     };
     
     if ([NSThread isMainThread]) {
@@ -62,7 +63,7 @@ static UIView *gBlackoutOverlay = nil;
             [overlay removeFromSuperview];
         }
         
-        NSLog(@"[Moody Glow] Blackout overlay removed (animated=%d)", animated);
+        MGLog(@"[Moody Glow] Blackout overlay removed (animated=%d)", animated);
     };
     
     if ([NSThread isMainThread]) {
@@ -82,33 +83,33 @@ static UIView *gBlackoutOverlay = nil;
     void (^work)(void) = ^{
         Class backlightClass = NSClassFromString(@"SBBacklightController");
         if (!backlightClass) {
-            NSLog(@"[Moody Glow] SBBacklightController not found.");
+            MGLog(@"[Moody Glow] SBBacklightController not found.");
             return;
         }
         
         id controller = [backlightClass performSelector:@selector(sharedInstance)];
         if (!controller) {
-            NSLog(@"[Moody Glow] SBBacklightController sharedInstance nil.");
+            MGLog(@"[Moody Glow] SBBacklightController sharedInstance nil.");
             return;
         }
         
         SEL sel = NSSelectorFromString(@"turnOffScreen");
         if (![controller respondsToSelector:sel]) {
-            NSLog(@"[Moody Glow] turnOffScreen selector not available.");
+            MGLog(@"[Moody Glow] turnOffScreen selector not available.");
             return;
         }
         
         // Use IMP (function pointer) to avoid ARC performSelector warning
         IMP imp = [controller methodForSelector:sel];
         if (!imp) {
-            NSLog(@"[Moody Glow] Could not obtain IMP for turnOffScreen.");
+            MGLog(@"[Moody Glow] Could not obtain IMP for turnOffScreen.");
             return;
         }
         
         void (*func)(id, SEL) = (void *)imp;
         func(controller, sel);
         
-        NSLog(@"[Moody Glow] Screen turned off.");
+        MGLog(@"[Moody Glow] Screen turned off.");
     };
     
     if ([NSThread isMainThread]) {
