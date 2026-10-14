@@ -2,7 +2,7 @@ Package: com.moody.moodyglow
 Name: Moody Glow
 Version: 1.0.0
 Architecture: iphoneos-arm64
-Description: Elevate your iPhone notifications with beautiful animations and glowing effects.
+Description: Elevate your iPhone notifications with beautiful animated glowing effects around the screen. Choose from 6 animation styles, customize colors per app, and enjoy a premium experience.
 Maintainer: Moody
 Author: Moody
 Section: Tweaks
