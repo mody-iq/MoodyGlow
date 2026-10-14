@@ -6,6 +6,7 @@
 #import <UIKit/UIKit.h>
 #import "MoodyGlowPrefsAnimationsController.h"
 #import "MoodyGlowLocalization.h"
+#import "MoodyGlowLog.h"
 
 static NSString * const kMoodyOriginalLabelKey = @"moodyOriginalLabel";
 static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
@@ -168,7 +169,7 @@ static NSString * const kMoodyOriginalFooterKey = @"moodyOriginalFooter";
     NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:@"com.moody.moodyglow"];
     [d setObject:hex forKey:@"StaticColor"];
     [d synchronize];
-    NSLog(@"[Moody Glow] Static color saved: %@", hex);
+    MGLog(@"[Moody Glow] Static color saved: %@", hex);
 }
 
 #pragma mark - UIColorPickerViewControllerDelegate
