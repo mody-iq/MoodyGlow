@@ -334,10 +334,9 @@ static NSTimer *gPGColorTimer = nil;
     return layer;
 }
 
-;
-- (CAShapeLayer *)createContrarySegmentLayerWithColor   :(UIColor *)color
-                                              bounds:(CGRect)bounds layer {
-    UIBezierPath *path = [self outline.shPathForBounds:bounds];
+- (CAShapeLayer *)createContrarySegmentLayerWithColor:(UIColor *)color
+                                               bounds:(CGRect)bounds {
+    UIBezierPath *path = [self outlinePathForBounds:bounds];
 
     CAShapeLayer *layer = [CAShapeLayer layer];
     layer.path = path.CGPath;
@@ -346,7 +345,8 @@ static NSTimer *gPGColorTimer = nil;
     layer.lineWidth = gPGGlowThickness;
     layer.lineCap = kCALineCapRound;
     layer.lineJoin = kCALineJoinRound;
-    layer.shadowColor = color.CGadowRadius = 14.0;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 14.0;
     layer.shadowOpacity = 1.0;
     layer.shadowOffset = CGSizeZero;
     layer.strokeStart = 0.0;
@@ -444,13 +444,11 @@ static NSTimer *gPGColorTimer = nil;
     CABasicAnimation *endAnim   = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
 
     if (isLeft) {
-        // Clockwise
         startAnim.fromValue = @0.0;
         startAnim.toValue = @1.0;
         endAnim.fromValue = @0.15;
         endAnim.toValue = @1.15;
     } else {
-        // Counter-clockwise (negative values wrap around)
         startAnim.fromValue = @0.0;
         startAnim.toValue = @-1.0;
         endAnim.fromValue = @0.15;
@@ -490,8 +488,10 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_lightbar_start"];
     [layer removeAnimationForKey:@"pg_lightbar_end"];
     [layer removeAnimationForKey:@"pg_pendulum"];
-    [layer removeAnimationForKey:@"pg_contrary_left"];
-    [layer removeAnimationForKey:@"pg_contrary_right"];
+    [layer removeAnimationForKey:@"pg_contrary_left_start"];
+    [layer removeAnimationForKey:@"pg_contrary_left_end"];
+    [layer removeAnimationForKey:@"pg_contrary_right_start"];
+    [layer removeAnimationForKey:@"pg_contrary_right_end"];
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
