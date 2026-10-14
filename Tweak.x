@@ -295,7 +295,7 @@ static void moodyGlowTestCallback(CFNotificationCenterRef center,
     if (!locked) {
         NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
-        [[MoodyGlowBlackout removeOverlayAnimated:NO];
+        [MoodyGlowBlackout removeOverlayAnimated:NO];
         [[MoodyGlowNotificationTracker sharedInstance] removeAll];
     }
 }
