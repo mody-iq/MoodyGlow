@@ -95,7 +95,7 @@
                                                                   set:nil
                                                                   get:nil
                                                                detail:nil
-                                                                 cell:PSBasicCell
+                                                                 cell:0
                                                                  edit:nil];
             [spec setProperty:bundleID forKey:@"bundleID"];
             [spec setProperty:detail forKey:@"detail"];
