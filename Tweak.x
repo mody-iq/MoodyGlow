@@ -1,7 +1,7 @@
 // Moody Glow - Tweak.x
 // Developer: Moody
 // Target: iOS 14.0 - 18.7 (RootHide)
-// Features: notification tracking, lock-aware glow, color cycling, custom colors
+// Features: filtering (Lockscreen/Universal/DND/ActiveApp), color cycling, custom colors
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -29,7 +29,6 @@ static void moodyGlowInitColorCacheIfNeeded(void) {
 static UIColor *moodyGlowCachedColorForBundle(NSString *bundleID) {
     if (!bundleID || bundleID.length == 0) return nil;
 
-    // Custom color takes priority over icon color
     UIColor *custom = [MoodyGlowCustomColors customColorForBundleID:bundleID];
     if (custom) return custom;
 
@@ -56,6 +55,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     MoodyGlowPrefs *prefs = [MoodyGlowPrefs sharedInstance];
     [prefs reload];
 
+    // ---- 1. Global enabled ----
     if (![prefs isEnabled]) {
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
         return;
@@ -66,6 +66,36 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
+    // ---- 2. Lock state filtering ----
+    BOOL locked = [MoodyGlowSystemState isDeviceLocked];
+
+    if (locked) {
+        if (![prefs isLockscreenEnabled]) {
+            NSLog(@"[Moody Glow] Skipping: Lockscreen disabled.");
+            [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+            return;
+        }
+    } else {
+        if (![prefs isUniversalEnabled]) {
+            NSLog(@"[Moody Glow] Skipping: Universal disabled (device unlocked).");
+            [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+            return;
+        }
+        if (![prefs showInActiveApp]) {
+            NSLog(@"[Moody Glow] Skipping: Show in Active App disabled.");
+            [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+            return;
+        }
+    }
+
+    // ---- 3. DND filtering ----
+    if (![prefs showInDND] && [MoodyGlowSystemState isDNDActive]) {
+        NSLog(@"[Moody Glow] Skipping: DND active and Show in DND disabled.");
+        [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
+        return;
+    }
+
+    // ---- 4. Apply speeds & thickness ----
     CGFloat breathing = [prefs breathingSpeed];
     CGFloat draw = [prefs speed];
     CGFloat thickness = [prefs glowThickness];
@@ -75,7 +105,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
     UIColor *fallback = [UIColor colorWithRed:0.85 green:0.95 blue:0.10 alpha:1.0];
 
-    // Static color mode: single color
+    // ---- 5. Static color mode ----
     if ([prefs colorMode] == MoodyGlowColorModeStatic) {
         UIColor *single = [prefs staticColor];
         if (!single) single = fallback;
@@ -85,7 +115,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
-    // Icon color mode
+    // ---- 6. Icon color mode ----
     if (![prefs isColorCyclingEnabled] || bundleIDs.count == 1) {
         NSString *first = bundleIDs.firstObject;
         UIColor *c = moodyGlowCachedColorForBundle(first);
@@ -96,7 +126,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
         return;
     }
 
-    // Icon color mode with cycling: full array (custom colors included via cache helper)
+    // ---- 7. Cycling ----
     NSMutableArray<UIColor *> *colors = [NSMutableArray arrayWithCapacity:bundleIDs.count];
     for (NSString *bundleID in bundleIDs) {
         UIColor *c = moodyGlowCachedColorForBundle(bundleID);
@@ -195,7 +225,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Custom Colors) ============");
+    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Filters Active) ============");
     %init(iOS14Plus);
 
     moodyGlowInitColorCacheIfNeeded();
@@ -205,5 +235,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
 
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Custom-color handler registered.");
+    NSLog(@"[Moody Glow] Filter handler registered.");
 }
