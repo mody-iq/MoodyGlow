@@ -13,6 +13,7 @@
 #import "MoodyGlowSystemState.h"
 #import "MoodyGlowCustomColors.h"
 #import "MoodyGlowBlackout.h"
+#import "MoodyGlowLog.h"
 
 #pragma mark - Color Cache
 
@@ -151,7 +152,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
                                                        style:[prefs selectedAnimationIndex]
                                                     animated:YES];
 
-    NSLog(@"[Moody Glow] Refresh: count=%ld, locked=%d, blackout=%d, wake=%d",
+    MGLog(@"[Moody Glow] Refresh: count=%ld, locked=%d, blackout=%d, wake=%d",
           (long)count, locked, blackoutEnabled, wakeAfter);
 
     // ---- Schedule blackout cleanup ----
@@ -240,7 +241,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     %orig;
 
     if (!locked) {
-        NSLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
+        MGLog(@"[Moody Glow] Device UNLOCKED. Stopping glow + blackout.");
         [[MoodyGlowPersistentGlow sharedInstance] stopAnimated:YES];
         [MoodyGlowBlackout removeOverlayAnimated:NO];
         [[MoodyGlowNotificationTracker sharedInstance] removeAll];
@@ -253,7 +254,7 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
 
 // --- Tweak Initialization ---
 %ctor {
-    NSLog(@"[Moody Glow] ============ TWEAK LOADED (Blackout Active) ============");
+    MGLog(@"[Moody Glow] ============ TWEAK LOADED (Blackout Active) ============");
     %init(iOS14Plus);
 
     moodyGlowInitColorCacheIfNeeded();
@@ -263,5 +264,5 @@ static void moodyGlowRefreshPersistentGlow(NSInteger count, NSArray<NSString *> 
     }];
 
     [[MoodyGlowNotificationTracker sharedInstance] removeAll];
-    NSLog(@"[Moody Glow] Blackout + Wake handler registered.");
+    MGLog(@"[Moody Glow] Blackout + Wake handler registered.");
 }
