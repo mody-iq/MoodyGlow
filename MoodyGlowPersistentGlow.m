@@ -6,7 +6,9 @@
 
 static const NSInteger kMoodyStyleLightBar  = 1;
 static const NSInteger kMoodyStyleOutline   = 2;
+static const NSInteger kMoodyStylePendulum  = 4;
 static const NSInteger kMoodyStyleSymmetric = 6;
+
 static const NSTimeInterval kMoodyBannerDuration = 7.0;
 static const NSTimeInterval kMoodyColorCycleInterval = 3.0;
 static const NSTimeInterval kMoodyDramaticDuration = 1.2;
@@ -310,6 +312,27 @@ static NSTimer *gPGColorTimer = nil;
     return layer;
 }
 
+- (CAShapeLayer *)createPendulumLayerWithColor:(UIColor *)color bounds:(CGRect)bounds {
+    CGFloat dotSize = MAX(gPGGlowThickness * 3.0, 20.0);
+    CGFloat yPos = bounds.size.height * 0.25;
+
+    UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:
+                            CGRectMake(0, 0, dotSize, dotSize)];
+
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.path = circle.CGPath;
+    layer.position = CGPointMake(60.0, yPos);
+    layer.fillColor = color.CGColor;
+    layer.strokeColor = [UIColor clearColor].CGColor;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 15.0;
+    layer.shadowOpacity = 1.0;
+    layer.shadowOffset = CGSizeZero;
+    layer.opacity = 1.0;
+    layer.zPosition = 9999;
+    return layer;
+}
+
 #pragma mark - Animations
 
 - (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
@@ -342,16 +365,6 @@ static NSTimer *gPGColorTimer = nil;
     [layer addAnimation:draw forKey:@"pg_symmetric"];
 }
 
-- (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
-    if (style == kMoodyStyleSymmetric) {
-        [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
-    } else if (style == kMoodyStyleLightBar) {
-        [self startLightBarAnimationOnLayer:layer speed:gPGDrawSpeed];
-    } else {
-        [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
-    }
-}
-
 - (void)startLightBarAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
     if (speed < 0.1) speed = 0.1;
     [layer removeAnimationForKey:@"pg_lightbar_start"];
@@ -376,12 +389,42 @@ static NSTimer *gPGColorTimer = nil;
     [layer addAnimation:endAnim forKey:@"pg_lightbar_end"];
 }
 
+- (void)startPendulumAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
+    if (speed < 0.1) speed = 0.1;
+    [layer removeAnimationForKey:@"pg_pendulum"];
+
+    CFTimeInterval duration = 1.5 / speed;
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+
+    CABasicAnimation *swing = [CABasicAnimation animationWithKeyPath:@"position.x"];
+    swing.fromValue = @(60.0);
+    swing.toValue = @(screenWidth - 60.0);
+    swing.duration = duration;
+    swing.autoreverses = YES;
+    swing.repeatCount = HUGE_VALF;
+    swing.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:swing forKey:@"pg_pendulum"];
+}
+
+- (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
+    if (style == kMoodyStyleSymmetric) {
+        [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStyleLightBar) {
+        [self startLightBarAnimationOnLayer:layer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStylePendulum) {
+        [self startPendulumAnimationOnLayer:layer speed:gPGDrawSpeed];
+    } else {
+        [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
+    }
+}
+
 - (void)removeAllStyleAnimationsFromLayer:(CAShapeLayer *)layer {
     if (!layer) return;
     [layer removeAnimationForKey:@"pg_breathe"];
     [layer removeAnimationForKey:@"pg_symmetric"];
     [layer removeAnimationForKey:@"pg_lightbar_start"];
     [layer removeAnimationForKey:@"pg_lightbar_end"];
+    [layer removeAnimationForKey:@"pg_pendulum"];
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
@@ -399,6 +442,13 @@ static NSTimer *gPGColorTimer = nil;
             colorAnim.duration = kMoodyDramaticDuration;
             colorAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             [layer addAnimation:colorAnim forKey:@"pg_color"];
+
+            CABasicAnimation *fillAnim = [CABasicAnimation animationWithKeyPath:@"fillColor"];
+            fillAnim.fromValue = (id)layer.fillColor;
+            fillAnim.toValue = (id)color.CGColor;
+            fillAnim.duration = kMoodyDramaticDuration;
+            fillAnim.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [layer addAnimation:fillAnim forKey:@"pg_fill_color"];
 
             CABasicAnimation *shadowColor = [CABasicAnimation animationWithKeyPath:@"shadowColor"];
             shadowColor.fromValue = (id)layer.shadowColor;
@@ -425,6 +475,7 @@ static NSTimer *gPGColorTimer = nil;
             [layer addAnimation:widthPulse forKey:@"pg_width_pulse"];
         }
         layer.strokeColor = color.CGColor;
+        layer.fillColor = color.CGColor;
         layer.shadowColor = color.CGColor;
     }
 }
@@ -492,6 +543,10 @@ static NSTimer *gPGColorTimer = nil;
         gPGLayer.shadowRadius = 18.0;
         [host addSublayer:gPGLayer];
         [self startLightBarAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStylePendulum) {
+        gPGLayer = [self createPendulumLayerWithColor:color bounds:bounds];
+        [host addSublayer:gPGLayer];
+        [self startPendulumAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
     } else {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
@@ -696,6 +751,7 @@ static NSTimer *gPGColorTimer = nil;
         for (CAShapeLayer *layer in layers) {
             [self removeAllStyleAnimationsFromLayer:layer];
             [layer removeAnimationForKey:@"pg_color"];
+            [layer removeAnimationForKey:@"pg_fill_color"];
             [layer removeAnimationForKey:@"pg_shadow_color"];
             [layer removeAnimationForKey:@"pg_shadow_pulse"];
             [layer removeAnimationForKey:@"pg_width_pulse"];
