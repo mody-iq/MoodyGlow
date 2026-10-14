@@ -4,6 +4,7 @@
 #import "MoodyGlowPersistentGlow.h"
 #import <QuartzCore/QuartzCore.h>
 
+static const NSInteger kMoodyStyleContrary  = 0;
 static const NSInteger kMoodyStyleLightBar  = 1;
 static const NSInteger kMoodyStyleOutline   = 2;
 static const NSInteger kMoodyStylePendulum  = 4;
@@ -333,6 +334,39 @@ static NSTimer *gPGColorTimer = nil;
     return layer;
 }
 
+- (CAShapeLayer *)createContraryBarWithColor:(UIColor *)color
+                                     isLeft:(BOOL)isLeft
+                                     bounds:(CGRect)bounds {
+    CGFloat barWidth = gPGGlowThickness;
+    CGFloat barHeight = bounds.size.height * 0.35;
+    CGFloat sideMargin = 30.0;
+
+    UIBezierPath *rect = [UIBezierPath bezierPathWithRoundedRect:
+                          CGRectMake(0, 0, barWidth, barHeight)
+                                                    cornerRadius:barWidth / 2.0];
+
+    CAShapeLayer *layer = [CAShapeLayer layer];
+    layer.path = rect.CGPath;
+    layer.fillColor = color.CGColor;
+    layer.strokeColor = [UIColor clearColor].CGColor;
+    layer.shadowColor = color.CGColor;
+    layer.shadowRadius = 12.0;
+    layer.shadowOpacity = 1.0;
+    layer.shadowOffset = CGSizeZero;
+    layer.opacity = 1.0;
+    layer.zPosition = 9999;
+
+    CGFloat xPos;
+    if (isLeft) {
+        xPos = sideMargin + barWidth / 2.0;
+    } else {
+        xPos = bounds.size.width - sideMargin - barWidth / 2.0;
+    }
+    layer.position = CGPointMake(xPos, barHeight / 2.0);
+
+    return layer;
+}
+
 #pragma mark - Animations
 
 - (void)startBreathingAnimationOnLayer:(CAShapeLayer *)layer speed:(CGFloat)speed {
@@ -406,6 +440,32 @@ static NSTimer *gPGColorTimer = nil;
     [layer addAnimation:swing forKey:@"pg_pendulum"];
 }
 
+- (void)startContraryAnimationOnLayer:(CAShapeLayer *)layer
+                                speed:(CGFloat)speed
+                               isLeft:(BOOL)isLeft {
+    if (speed < 0.1) speed = 0.1;
+    NSString *key = isLeft ? @"pg_contrary_left" : @"pg_contrary_right";
+    [layer removeAnimationForKey:key];
+
+    CGFloat barHeight = layer.path.boundingBox.size.height;
+    CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
+    CFTimeInterval duration = 2.0 / speed;
+
+    CABasicAnimation *move = [CABasicAnimation animationWithKeyPath:@"position.y"];
+    if (isLeft) {
+        move.fromValue = @(barHeight / 2.0);
+        move.toValue = @(screenHeight - barHeight / 2.0);
+    } else {
+        move.fromValue = @(screenHeight - barHeight / 2.0);
+        move.toValue = @(barHeight / 2.0);
+    }
+    move.duration = duration;
+    move.autoreverses = YES;
+    move.repeatCount = HUGE_VALF;
+    move.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    [layer addAnimation:move forKey:key];
+}
+
 - (void)startAnimationForStyle:(NSInteger)style layer:(CAShapeLayer *)layer {
     if (style == kMoodyStyleSymmetric) {
         [self startSymmetricAnimationOnLayer:layer speed:gPGDrawSpeed];
@@ -413,6 +473,9 @@ static NSTimer *gPGColorTimer = nil;
         [self startLightBarAnimationOnLayer:layer speed:gPGDrawSpeed];
     } else if (style == kMoodyStylePendulum) {
         [self startPendulumAnimationOnLayer:layer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStyleContrary) {
+        BOOL isLeft = (layer == gPGLayer);
+        [self startContraryAnimationOnLayer:layer speed:gPGDrawSpeed isLeft:isLeft];
     } else {
         [self startBreathingAnimationOnLayer:layer speed:gPGBreathingSpeed];
     }
@@ -425,6 +488,8 @@ static NSTimer *gPGColorTimer = nil;
     [layer removeAnimationForKey:@"pg_lightbar_start"];
     [layer removeAnimationForKey:@"pg_lightbar_end"];
     [layer removeAnimationForKey:@"pg_pendulum"];
+    [layer removeAnimationForKey:@"pg_contrary_left"];
+    [layer removeAnimationForKey:@"pg_contrary_right"];
 }
 
 #pragma mark - Color Cycling (Dramatic Transition)
@@ -547,6 +612,14 @@ static NSTimer *gPGColorTimer = nil;
         gPGLayer = [self createPendulumLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
         [self startPendulumAnimationOnLayer:gPGLayer speed:gPGDrawSpeed];
+    } else if (style == kMoodyStyleContrary) {
+        gPGLayer       = [self createContraryBarWithColor:color isLeft:YES bounds:bounds];
+        gPGSecondLayer = [self createContraryBarWithColor:color isLeft:NO  bounds:bounds];
+        [host addSublayer:gPGLayer];
+        [host addSublayer:gPGSecondLayer];
+
+        [self startContraryAnimationOnLayer:gPGLayer       speed:gPGDrawSpeed isLeft:YES];
+        [self startContraryAnimationOnLayer:gPGSecondLayer speed:gPGDrawSpeed isLeft:NO];
     } else {
         gPGLayer = [self createOutlineLayerWithColor:color bounds:bounds];
         [host addSublayer:gPGLayer];
