@@ -2,37 +2,77 @@
 
 Elevate your iPhone notifications with beautiful animated glowing effects around the screen.
 
-![Moody Glow](https://github.com/mody-iq/MoodyGlow/raw/main/layout/Library/PreferenceLoader/Preferences/MoodyGlow.png)
+![Moody Glow](layout/Library/PreferenceLoader/Preferences/MoodyGlow.png)
 
-## Features
+---
 
-- **6 Animation Styles**: Contrary, Light Bar, Outline, Particles, Pendulum, Symmetric
-- **Color Cycling**: Auto-cycle through app colors when multiple apps send notifications
-- **Custom App Colors**: Override any app's color with your own choice
-- **Glow Thickness**: Customize the line width (1-12px)
-- **Speed Controls**: Breathing speed + Draw speed
-- **Blackout Mode**: Dark screen with glow only (optional wake)
-- **Smart Filtering**: Lockscreen, Universal, DND, Active App
-- **Lock-Aware**: Persistent glow on lock screen, 7-second glow when unlocked
-- **Bilingual**: Arabic + English
+## ✨ Features
 
-## Compatibility
+- **6 Unique Animation Styles:**
+  - Contrary
+  - Light Bar
+  - Outline
+  - Particles
+  - Pendulum
+  - Symmetric
 
-- **iOS**: 14.0 - 18.7
-- **Jailbreak**: RootHide / Rootless / Rootful
-- **Devices**: All iPhones with notch
+- **Custom Colors per App:** Override any app's color with your own choice.
 
-## Installation
+- **Color Cycling:** Automatically cycle through app colors when multiple apps send notifications.
 
-1. Add the repository to Sileo/Zebra
-2. Install **Moody Glow**
-3. Respring
-4. Open Settings → Moody Glow
+- **Glow Thickness:** Customize the line width from 1 to 12 pixels.
 
-## Credits
+- **Speed Controls:** Adjust breathing speed and draw speed independently.
 
-**Developer**: Moody ([@mody-iq](https://github.com/mody-iq))
+- **Blackout Mode:** Darken the screen with only the glow visible (optional wake after animation).
 
-## License
+- **Smart Filtering:** Lockscreen, Universal, DND, and Active App controls.
 
-MIT License
+- **Lock-Aware:** Persistent glow on lock screen, auto-dismiss when unlocked.
+
+- **Bilingual UI:** Arabic + English.
+
+---
+
+## 📱 Compatibility
+
+- **iOS:** 14.0 – 18.7
+- **Jailbreak:** RootHide / Rootless / Rootful
+- **Devices:** iPhone X and newer (notch devices)
+
+---
+
+## 📦 Installation
+
+1. Add the repository to **Sileo** or **Zebra**.
+2. Install **Moody Glow**.
+3. Respring your device.
+4. Open **Settings → Moody Glow**.
+
+---
+
+## 🎨 How to Use
+
+### Animation Style
+Open **Settings → Moody Glow → Animations → Style** and pick from 6 different animations.
+
+### Custom App Colors
+Open **Settings → Moody Glow → Animations → Custom App Colors** and assign a custom color to any app.
+
+### Color Cycling
+Toggle **Color Cycling** to enable automatic color rotation between apps.
+
+### Glow Thickness
+Use the **Glow Thickness** slider to adjust the line width (1-12 px).
+
+### Blackout
+Enable **Blackout** to darken the screen while the glow plays. Optionally enable **Wake screen after Blackout**.
+
+---
+
+## 🛠️ Build from Source
+
+```bash
+git clone https://github.com/mody-iq/MoodyGlow.git
+cd MoodyGlow
+make package FINALPACKAGE=1
